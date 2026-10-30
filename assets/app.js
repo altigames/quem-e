@@ -1,4 +1,4 @@
-/* QUEM É?! v8 — AltiGames, flat vector art. Frontend estatico; autoridade de partida no Supabase RPC. */
+/* QUEM É?! v10 — Pixel Space Arcade. Visuais renovados e palpite direto no tabuleiro. */
 (() => {
   'use strict';
   const cfg = window.QE_CONFIG || {};
@@ -11,7 +11,7 @@
   const colors = ['#87C7B9','#EDA6A0','#EEC37D','#A5A9D9','#91B8D6','#DAAECA'];
   const state = { room:null, token:null, code:null, categories:[], items:[],
     view:'home', homeMode:'choices', name:'', entryCode:'', selectedCategory:'', count:20,
-    customTitle:'', customItems:[], modal:null, guessId:null, guessFilter:'', showEliminated:false,
+    customTitle:'', customItems:[], modal:null, guessId:null, guessFilter:'', showEliminated:false, guessMode:false, categoryQuery:'', avatars:{},
     boardMarks:new Set(), timeOffset:0, busy:false, lastSignature:'',
     lastEventKey:'', adminSession:null, adminCat:null, adminEdit:null,
     adminNew:{ name:'',image_url:'' }, channel:null, poll:null, clock:null, leaving:false };
@@ -63,6 +63,17 @@
     return `<svg class="category-art" viewBox="0 0 100 100" aria-hidden="true">${shapes}</svg>`;
   };
   const initial = name => [...String(name||'?').trim()][0]?.toLocaleUpperCase('pt-BR') || '?';
+  const avatarIndex=(player,i=0)=> Number.isInteger(state.avatars[player?.id]) ? state.avatars[player.id] : i%4;
+  const avatarSprite=(i,name='')=>`<img class="pixel-avatar" src="assets/avatar-${(i%4)+1}.png" loading="lazy" alt="" aria-hidden="true">`;
+  const playerAvatar=(player,i)=>avatarSprite(avatarIndex(player,i),player?.name);
+  const hostCrown=()=>'<img src="assets/host-crown.png" class="host-crown" alt="Host">';
+  function avatarStoreKey(){return `qe-avatar-${state.code||state.room?.code||''}`;}
+  function loadAvatars(){try{state.avatars=JSON.parse(sessionStorage.getItem(avatarStoreKey())||'{}')||{};}catch{state.avatars={};}}
+  function saveAvatars(){try{sessionStorage.setItem(avatarStoreKey(),JSON.stringify(state.avatars));}catch{}}
+  function broadcastAvatar(playerId,index){try{state.channel?.send({type:'broadcast',event:'avatar',payload:{playerId,index}});}catch{}}
+  function syncAvatarPeers(){const id=state.room?.me;if(id&&Number.isInteger(state.avatars[id]))broadcastAvatar(id,state.avatars[id]);}
+  
+  const brandImage=(extra='')=>`<img class="pixel-brand ${extra}" src="assets/logo.png" alt="Quem É?!">`;
   const categoryFor = id => state.categories.find(c=>c.id===id);
   const itemsFor = id => state.items.filter(i=>i.category_id===id);
   const currentLink = () => { const url = new URL(cfg.siteUrl||location.href); url.search=''; url.hash=''; url.searchParams.set('sala',state.room?.code||state.entryCode||''); return url.toString(); };
@@ -87,8 +98,8 @@
     if(!state.adminCat)state.adminCat=state.categories[0]?.id||null;
   }
   function persistSession() { if(state.token&&state.code)sessionStorage.setItem(SESSION_KEY,JSON.stringify({token:state.token,code:state.code})); }
-  function clearSession() { state.modal=null;document.getElementById('overlay')?.remove();sessionStorage.removeItem(SESSION_KEY); state.token=null;state.code=null;state.room=null;state.lastSignature='';state.lastEventKey='';state.boardMarks=new Set();endLive(); }
-  function setSession(data) {state.token=data.token;state.code=data.code;persistSession();state.room=null;state.lastSignature='';state.view='room';state.modal=null;state.boardMarks=new Set();}
+  function clearSession() { state.modal=null;document.getElementById('overlay')?.remove();sessionStorage.removeItem(SESSION_KEY); state.token=null;state.code=null;state.room=null;state.lastSignature='';state.lastEventKey='';state.boardMarks=new Set();state.guessMode=false;endLive(); }
+  function setSession(data) {state.token=data.token;state.code=data.code;persistSession();state.room=null;state.lastSignature='';state.view='room';state.modal=null;state.boardMarks=new Set();state.guessMode=false;loadAvatars();}
   function boardKey() {return `qe-board-${state.room?.code}-${state.room?.me}`;}
   function readMarks(){try{state.boardMarks=new Set(JSON.parse(sessionStorage.getItem(boardKey())||'[]'));}catch{state.boardMarks=new Set();}}
   function saveMarks(){sessionStorage.setItem(boardKey(),JSON.stringify([...state.boardMarks]));}
@@ -107,13 +118,13 @@
       const changed=(sig!==state.lastSignature || force);
       const was=state.room;state.room=next;
       if(!was&&next.theme_id){state.selectedCategory=next.theme_id;state.count=next.target_count||20;}
-      if(!was||was.code!==next.code||was.me!==next.me)readMarks();
-      if(was && was.round_id!==next.round_id){state.boardMarks=new Set();saveMarks();state.modal=null;}
+      if(!was||was.code!==next.code||was.me!==next.me){readMarks();loadAvatars();}
+      if(was && was.round_id!==next.round_id){state.boardMarks=new Set();saveMarks();state.modal=null;state.guessMode=false;state.guessId=null;}
       state.lastSignature=sig;
       if(changed){
         if(state.view!=='room')state.view='room';
-        if(was&&was.turn_number!==next.turn_number&&['guess','guess-check'].includes(state.modal?.type))state.modal=null;
-        if(was?.status!=='finished'&&next.status==='finished'&&state.modal?.type!=='guess-result')state.modal=null;
+        if(was&&was.turn_number!==next.turn_number){state.guessMode=false;state.guessId=null;}
+        if(was?.status!=='finished'&&next.status==='finished'&&state.modal?.type!=='guess-result'){state.modal=null;state.guessMode=false;}
         render();
         if(was&&next.last_event?.type==='wrong'&&next.turn_number!==was.turn_number)showToast(`${next.last_event.player} errou o palpite! Próxima vez.`,false);
       }
@@ -130,7 +141,11 @@
     endLive();if(!state.token)return;
     state.poll=setInterval(()=>{if(!document.hidden)void getState();},1700);
     state.clock=setInterval(()=>{updateClock();updateResultProgress();},100);
-    if(client&&state.code){state.channel=client.channel(`quem-e:${state.code}`,{config:{broadcast:{self:false}}}).on('broadcast',{event:'changed'},()=>void getState()).subscribe();}
+    if(client&&state.code){state.channel=client.channel(`quem-e:${state.code}`,{config:{broadcast:{self:false}}})
+      .on('broadcast',{event:'changed'},()=>void getState())
+      .on('broadcast',{event:'avatar'},({payload})=>{if(!payload||!state.room?.players?.some(p=>p.id===payload.playerId)||!Number.isInteger(payload.index)||payload.index<0||payload.index>3)return;state.avatars[payload.playerId]=payload.index;saveAvatars();if(!state.modal||state.modal.type!=='guess-result')render();})
+      .on('broadcast',{event:'avatar-hello'},()=>syncAvatarPeers())
+      .subscribe(status=>{if(status==='SUBSCRIBED'){syncAvatarPeers();state.channel?.send({type:'broadcast',event:'avatar-hello',payload:{}});}});}
   }
   function pingPeers(){try{state.channel?.send({type:'broadcast',event:'changed',payload:{at:Date.now()}});}catch{}}
   async function act(action,data={}){
@@ -175,38 +190,51 @@
     }
   }
   async function doAction(action,data={}){await safeCall(async()=>{await act(action,data);});}
-  function header(tag='',room=false){return `<div class="site-head"><div class="logo logo-small" aria-label="QUEM É">QUEM <span>É?!</span></div><div class="header-right">${tag?`<span class="head-tag">${esc(tag)}</span>`:''}${room?iconButton('leave-open',svgIcon('back'),'Sair da sala'):state.view==='admin'?iconButton('admin-back',svgIcon('back'),'Voltar ao jogo'):''}</div></div>`;}
+  function header(tag='',room=false){return `<div class="site-head"><div class="logo-small">${brandImage()}</div><div class="header-right">${tag?`<span class="head-tag">${esc(tag)}</span>`:''}${room?iconButton('leave-open',svgIcon('back'),'Sair da sala'):state.view==='admin'?iconButton('admin-back',svgIcon('back'),'Voltar ao jogo'):''}</div></div>`;}
   function renderHome(){
-    const step=state.homeMode;
-    const choose=step==='choices';
-    el.innerHTML=`<div class="site-shell"><main class="app-scroll"><div class="home-area"><div class="home-grid flat-home">
-      <div class="home-hero-flat"><div class="hero-orbit orbit-a"></div><div class="hero-orbit orbit-b"></div><img class="hero-illustration" src="assets/hero.svg" alt="Três pessoas ilustradas com formas e cores suaves"/><div class="flat-wordmark"><span>Quem</span><em>É?!</em></div><span class="hero-spark spark-a" aria-hidden="true">✳</span><span class="hero-spark spark-b" aria-hidden="true">✦</span></div>
-      <section class="flat-home-form">${choose?`<p class="home-strapline">Quem você será hoje?</p><button class="btn btn-primary" data-action="choose-create">${svgIcon('plus')} Criar sala</button><button class="btn btn-cyan" data-action="choose-join">${svgIcon('enter')} Entrar na sala</button><p class="home-support">De 2 a 5 pessoas · Descubra sua identidade</p>`:
-       `<button class="entry-back" data-action="go-back">${svgIcon('back')} Voltar</button><h2 class="panel-title">${step==='create'?'Criar sala':'Entrar na sala'}</h2>${step==='join'?`<div class="field"><label for="join-code">Código da sala</label><input id="join-code" class="text-input" placeholder="AB3DE7" maxlength="6" value="${esc(state.entryCode)}" autocapitalize="characters" style="text-transform:uppercase;letter-spacing:.18em"></div>`:''}<div class="field"><label for="player-name">Seu nome</label><input id="player-name" maxlength="22" class="text-input" placeholder="Como quer aparecer?" value="${esc(state.name)}" autocomplete="nickname"></div><button class="btn ${step==='create'?'btn-primary':'btn-cyan'}" data-action="${step==='create'?'create':'join'}">${step==='create'?'Criar partida':'Entrar na partida'} ${svgIcon('enter')}</button>`}</section>
+    const step=state.homeMode,choose=step==='choices';
+    el.innerHTML=`<div class="site-shell pixel-home"><main class="app-scroll"><div class="home-area"><div class="home-grid flat-home">
+      <div class="home-hero-flat">${brandImage('home-logo')}<p class="home-subtitle">DESCUBRA SUA IDENTIDADE<br>COM SEUS AMIGOS!</p></div>
+      <section class="flat-home-form">${choose?`<button class="btn btn-yellow btn-pixel-create" data-action="choose-create">CRIAR SALA ▶</button><button class="btn btn-violet btn-pixel-join" data-action="choose-join">ENTRAR NA SALA</button>`:
+       `<button class="entry-back" data-action="go-back">${svgIcon('back')} VOLTAR</button><h2 class="panel-title">${step==='create'?'CRIAR SALA':'ENTRAR NA SALA'}</h2>${step==='join'?`<div class="field"><label for="join-code">CÓDIGO DA SALA</label><input id="join-code" class="text-input" placeholder="FCQ9F9" maxlength="6" value="${esc(state.entryCode)}" autocapitalize="characters" style="text-transform:uppercase;letter-spacing:.18em"></div>`:''}<div class="field"><label for="player-name">SEU NOME</label><input id="player-name" maxlength="22" class="text-input" placeholder="Como quer aparecer?" value="${esc(state.name)}" autocomplete="nickname"></div><button class="btn ${step==='create'?'btn-yellow':'btn-violet'}" data-action="${step==='create'?'create':'join'}">${step==='create'?'CRIAR PARTIDA':'ENTRAR NA SALA'} ▶</button>`}</section>
     </div></div></main></div>`;
   }
-  function roomPlayerRows(){return (state.room.players||[]).map((p,i)=>`<div class="player-row bubble-player bubble-variant-${i%4}"><div class="player-no" style="--avatar-bg:${colors[i%colors.length]}">${esc(initial(p.name))}</div><span class="player-name" title="${esc(p.name)}">${esc(p.name)}${p.is_me?'<small> • você</small>':''}</span>${p.is_host?'<span class="mini-tag" title="Host">★</span>':''}${isHost()&&!p.is_me?iconButton('kick-open','×',`Expulsar ${p.name}`,`data-id="${p.id}"`):''}</div>`).join('');}
-  function themeCards(){const all=state.categories.filter(c=>c.active);return all.map((c,i)=>{const n=itemsFor(c.id).length;return `<button class="theme-card theme-tone-${i%6} ${state.selectedCategory===c.id?'selected':''}" data-action="choose-theme" data-id="${c.id}" ${n<16?'disabled':''}><span class="theme-illustration">${categoryArt(c.name)}</span><span class="theme-meta"><span class="theme-name">${esc(c.name)}</span><span class="theme-qty">${n} itens</span></span>${state.selectedCategory===c.id?'<span class="theme-check">✓</span>':''}</button>`;}).join('')+`<button class="theme-card custom" data-action="custom-open"><span class="theme-illustration custom-art">✳</span><span class="theme-meta"><span class="theme-name">Criar tema</span><span class="theme-qty">Seu universo</span></span></button>`;}
-  function renderLobby(){const r=state.room;const host=isHost();const picked=categoryFor(state.selectedCategory);const max=picked?itemsFor(picked.id).length:16;state.count=Math.max(16,Math.min(max,state.count));
-    const options=[15,30,45,60,90,120,null];const timeControls=options.map(n=>`<button class="time-opt ${r.turn_seconds===n?'selected':''}" data-action="set-time" data-seconds="${n===null?'infinite':n}" title="${n===null?'Sem limite':n+' segundos'}">${timerLabel(n)}</button>`).join('');
-    el.innerHTML=`<div class="room-shell">${header(`SALA ${r.code}`,true)}<main class="lobby-scroll"><div class="lobby-wrap"><aside class="lobby-side">
+  function roomPlayerRows(){return (state.room.players||[]).map((p,i)=>`<div class="player-row"><div class="player-no ${p.is_me?'avatar-clickable':''}" ${p.is_me?'data-action="avatar-open" role="button" tabindex="0" title="Trocar avatar"':''}>${playerAvatar(p,i)}</div><span class="player-name" title="${esc(p.name)}">${esc(p.name)}${p.is_me?'<small>VOCÊ</small>':''}<small class="ready">PRONTO</small></span>${p.is_host?hostCrown():''}${isHost()&&!p.is_me?iconButton('kick-open','×',`Expulsar ${p.name}`,`data-id="${p.id}"`):''}</div>`).join('')+Array.from({length:Math.max(0,5-state.room.players.length)},()=>`<div class="player-row vacant"><div class="player-no empty">?</div><span class="player-name">Aguardando...</span></div>`).join('');}
+  function themeIcon(name){const n=String(name||'').toLocaleLowerCase('pt-BR');
+    if(/celebr|famos|pessoa|ator/.test(n))return 'star';
+    if(/cine|filme|serie|série/.test(n))return 'cinema';
+    if(/mús|mus|cant|som/.test(n))return 'music';
+    if(/esport|fute|bola/.test(n))return 'sports';
+    if(/lugar|país|cidade|geograf/.test(n))return 'places';
+    if(/anim|bicho|pet/.test(n))return 'animals';
+    if(/comida|fruta|food/.test(n))return 'food';return 'star';}
+  const topicPic=name=>`<img src="assets/cat-${themeIcon(name)}.png" class="theme-pixel-icon" alt="">`;
+  function themeCards(){const q=state.categoryQuery.trim().toLocaleLowerCase('pt-BR');const all=state.categories.filter(c=>c.active&&c.name.toLocaleLowerCase('pt-BR').includes(q));
+    return all.map(c=>{const n=itemsFor(c.id).length;return `<button class="theme-card ${state.selectedCategory===c.id?'selected':''}" data-action="choose-theme" data-id="${c.id}" ${n<16?'disabled':''}>${topicPic(c.name)}<span class="theme-meta"><span class="theme-name">${esc(c.name)}</span><span class="theme-qty">${n} itens</span></span><span class="theme-arrow">${state.selectedCategory===c.id?'✓':'›'}</span></button>`;}).join('')+(!q||'criar tema'.includes(q)?`<button class="theme-card custom" data-action="custom-open"><img class="theme-pixel-icon" src="assets/cat-custom.png" alt=""><span class="theme-meta"><span class="theme-name">Criar tema</span><span class="theme-qty">Tema personalizado</span></span><span class="theme-arrow">›</span></button>`:'') || '<p class="catalog-empty">Nenhum tema encontrado.</p>';}
+  function renderWaitingPlayer(){
+    const r=state.room;
+    el.innerHTML=`<div class="room-shell waiting-screen"><main class="wait-center">${brandImage('wait-logo')}<div class="wait-hint"><h1>PREPARANDO<br>A PARTIDA...</h1><p>AGUARDANDO O HOST INICIAR</p></div><div class="wait-players">${(r.players||[]).map((p,i)=>`<div class="wait-player"><div class="wait-portrait ${p.is_me?'avatar-clickable':''}" ${p.is_me?'data-action="avatar-open" role="button" tabindex="0" title="Trocar avatar"':''}>${playerAvatar(p,i)}${p.is_host?hostCrown():''}</div><span>${esc(p.name)}</span></div>`).join('')}</div><div class="wait-loading"><span>CARREGANDO...</span><div class="wait-progress"><i></i></div></div><button class="btn btn-danger wait-leave" data-action="leave-open">↪ SAIR DA SALA</button></main></div>`;
+  }
+  function renderLobby(){if(!isHost())return renderWaitingPlayer();const r=state.room;const host=isHost();const picked=categoryFor(state.selectedCategory);const max=picked?itemsFor(picked.id).length:16;state.count=Math.max(16,Math.min(max,state.count));
+    const options=[15,30,45,60,90,120,null];const timeControls=options.map(n=>`<button class="time-opt ${n===null?'time-infinite':''} ${r.turn_seconds===n?'selected':''}" data-action="set-time" data-seconds="${n===null?'infinite':n}" title="${n===null?'Sem limite':n+' segundos'}">${n===null?'<img src="assets/pixel-infinity.png" alt=""> TEMPO INFINITO':timerLabel(n)}</button>`).join('');
+    el.innerHTML=`<div class="room-shell">${header('',true)}<main class="lobby-scroll"><div class="lobby-wrap"><aside class="lobby-side">
       <div class="panel room-code-panel"><div class="room-code">${esc(r.code)}</div><div class="code-buttons">${iconButton('copy',svgIcon('copy'),'Copiar link')}${iconButton('share',svgIcon('share'),'Compartilhar')}${iconButton('qr-open',svgIcon('qr'),'QR Code')}</div></div>
       <div class="panel"><div class="section-inline"><h2 class="section-title">JOGADORES</h2><span class="sticker">${r.players.length}/5</span></div><div class="players-list">${roomPlayerRows()}</div></div>
       </aside><section class="panel"><div class="theme-header"><h2 class="section-title">${host?'TEMA':'TEMA DA RODADA'}</h2>${host?'<span class="mini-tag">★ HOST</span>':''}</div>
-      ${host?`<div class="theme-list">${themeCards()}</div>
+      ${host?`<label class="theme-search-label"><span>⌕</span><input id="theme-search" type="search" placeholder="Pesquisar temas..." value="${esc(state.categoryQuery)}" aria-label="Pesquisar temas"></label><div class="theme-list" id="theme-list">${themeCards()}</div>
       ${picked?`<div class="choice-controls"><span class="tiny-label">ITENS</span><div class="count-stepper"><button data-action="count-minus" aria-label="Menos itens">−</button><input id="item-count" aria-label="Quantidade de itens" type="number" min="16" max="${max}" value="${state.count}"><button data-action="count-plus" aria-label="Mais itens">+</button></div><button class="btn btn-violet btn-sm" data-action="confirm-theme">✓ ESCOLHER</button></div>`:''}
-      <div class="time-config"><span class="comic-time-heading">${flatIcon('clock')}<span>TEMPO POR VEZ</span></span><div class="time-options">${timeControls}</div></div>`:
+      <div class="time-config"><span class="comic-time-heading"><img class="time-clock-img" src="assets/pixel-clock.png" alt=""><span>TEMPO POR VEZ</span></span><div class="time-options">${timeControls}</div></div>`:
       `<div class="round-comic-summary"><div class="summary-tile theme-summary"><span class="summary-label">TEMA</span><strong>${r.theme_name?esc(r.theme_name):'AGUARDANDO...'}</strong><span>${r.target_count||'—'} ITENS</span></div><div class="summary-tile time-summary">${flatIcon('clock')}<span class="summary-label">TEMPO</span><strong>${r.turn_seconds===null?'∞':r.turn_seconds+'s'}</strong></div></div>`}
       
       </section></div></main><footer class="lobby-bottom">${host?`<button class="btn btn-primary" data-action="start" ${!r.theme_name||r.players.length<2?'disabled':''}>▶ JOGAR</button>`:'<span class="sticker">⏳ AGUARDANDO</span>'}</footer></div>`;
   }
-  function playerChips(){return state.room.players.map((p,i)=>`<div class="p-chip ${p.id===state.room.turn_player_id?'active':''} ${p.is_me?'me':''} ${p.rank?'ranked':''}" title="${esc(p.name)}"><span class="avatar" style="--a-color:${colors[i%colors.length]}">${esc(initial(p.name))}</span><div class="p-info"><div class="p-name">${esc(p.name)}${p.is_me?' •':''}${p.is_host?' ★':''}</div><div class="p-identity">${p.rank?`${rankLabel(p.rank)} · `:''}${p.is_me&&!p.rank?'?':esc(p.identity?.name||'?')}</div></div></div>`).join('');}
-  function boardCards(){const editable=canEditBoard();return state.room.items.map((item,i)=>{const hasImage=!!safeImg(item.image_url);const name=esc(item.name);const size=item.name.length>48?'ultra':item.name.length>31?'long':item.name.length>18?'medium':'short';const cardTitle=editable?`${name} — toque para ${state.boardMarks.has(item.id)?'restaurar':'eliminar'}`:`${name} — aguarde sua vez`;return `<button type="button" aria-pressed="${state.boardMarks.has(item.id)}" aria-disabled="${!editable}" class="item-card flat-tone-${i%6} ${hasImage?'with-image':'text-only'} ${state.boardMarks.has(item.id)?'eliminated':''}" data-action="mark" data-id="${item.id}" title="${cardTitle}" ${editable?'':'disabled'}><span class="item-ink"><span class="card-art">${hasImage?imgHtml(item.image_url,item.name):`<span class="card-fullname ${size}">${name}</span>`}</span>${hasImage?`<span class="card-title">${name}</span>`:''}</span></button>`;}).join('');}
+  function playerChips(){return state.room.players.map((p,i)=>`<div class="p-chip ${p.id===state.room.turn_player_id?'active':''} ${p.is_me?'me':''} ${p.rank?'ranked':''}" title="${esc(p.name)}"><span class="avatar">${playerAvatar(p,i)}</span><div class="p-info"><div class="p-name">${esc(p.name)}${p.is_me?' •':''}${p.is_host?' ★':''}</div><div class="p-identity">${p.rank?`${rankLabel(p.rank)} · `:''}${p.is_me&&!p.rank?'?':esc(p.identity?.name||'?')}</div></div></div>`).join('');}
+  function boardCards(){const editable=canEditBoard();const guessing=state.guessMode&&editable;return state.room.items.map((item,i)=>{const hasImage=!!safeImg(item.image_url);const name=esc(item.name);const size=item.name.length>48?'ultra':item.name.length>31?'long':item.name.length>18?'medium':'short';const cardTitle=guessing?`Selecionar palpite: ${name}`:(editable?`${name} — toque para ${state.boardMarks.has(item.id)?'restaurar':'eliminar'}`:`${name} — aguarde sua vez`);return `<button type="button" aria-pressed="${guessing?state.guessId===item.id:state.boardMarks.has(item.id)}" aria-disabled="${!editable}" class="item-card flat-tone-${i%6} ${hasImage?'with-image':'text-only'} ${!guessing&&state.boardMarks.has(item.id)?'eliminated':''} ${guessing?'guess-candidate':''} ${guessing&&state.guessId===item.id?'guess-selected':''}" data-action="${guessing?'guess-pick':'mark'}" data-id="${item.id}" title="${cardTitle}" ${editable?'':'disabled'}><span class="item-ink"><span class="card-art">${hasImage?imgHtml(item.image_url,item.name):`<span class="card-fullname ${size}">${name}</span>`}</span>${hasImage?`<span class="card-title">${name}</span>`:''}</span></button>`;}).join('');}
   function syncBoardLock(){
     const board=document.getElementById('board-wrap');
     if(!board)return;
     const editable=canEditBoard();
-    if(board.dataset.editable===String(editable))return;
+    if(board.dataset.editable===String(editable))return; if(!editable&&state.guessMode){state.guessMode=false;state.guessId=null;renderGame();return;}
     board.dataset.editable=String(editable);
     board.classList.toggle('board-locked',!editable);
     const status=document.getElementById('board-turn-status');
@@ -219,11 +247,11 @@
     });
   }
   function renderGame(){const r=state.room;const current=r.players.find(p=>p.id===r.turn_player_id);const ranked=!!me()?.rank;
-    el.innerHTML=`<div class="game-screen">${header(r.theme_name,true)}<section class="game-top"><div class="turn-banner"><div class="turn-icon">${ranked?'✦':'?'}</div><div class="turn-copy"><div class="turn-heading">Vez de ${esc(current?.name||'...')}</div>${ranked?`<div class="turn-hint">Você: ${rankLabel(me().rank)} lugar</div>`:''}</div></div><div class="clock-box"><span id="clock-number" class="clock-number">${r.turn_seconds===null?'∞':'--'}</span>${r.turn_seconds===null?'':'<span class="clock-unit">s</span>'}</div></section><section class="game-players">${playerChips()}</section>
-      <div class="board-wrap" id="board-wrap"><div class="board-heading"><h2>TABULEIRO</h2><span class="board-turn-status" id="board-turn-status" aria-live="polite"></span><span class="board-stats" id="board-stats">${state.boardMarks.size}/${r.items.length}</span></div><div class="board-scroll" id="board-scroll"><div class="board-grid" id="board-grid">${boardCards()}</div></div></div>
-      <footer class="game-actions"><button class="btn btn-yellow" data-action="next" ${!isMyTurn()&&!isHost()?'disabled':''}>${flatIcon('pass')}<span>PASSAR</span></button><button class="btn btn-primary" data-action="guess-open" ${!isMyTurn()?'disabled':''}>${flatIcon('guess')}<span>PALPITE</span></button></footer></div>`;updateClock();}
+    el.innerHTML=`<div class="game-screen">${header(r.theme_name,true)}<section class="game-top"><div class="turn-banner"><div class="turn-copy"><div class="turn-heading">${isMyTurn()?'SUA VEZ!':`Vez de ${esc(current?.name||'...')}`}</div>${ranked?`<div class="turn-hint">Você: ${rankLabel(me().rank)} lugar</div>`:''}</div></div><div class="clock-box"><span id="clock-number" class="clock-number">${r.turn_seconds===null?'∞':'--'}</span>${r.turn_seconds===null?'':'<span class="clock-unit">s</span>'}</div></section><section class="game-players">${playerChips()}</section>
+      <div class="board-wrap ${state.guessMode?'board-guess-mode':''}" id="board-wrap"><div class="board-heading"><h2>TABULEIRO</h2><span class="board-turn-status" id="board-turn-status" aria-live="polite"></span><span class="board-stats" id="board-stats">${state.boardMarks.size}/${r.items.length}</span></div><div class="board-scroll" id="board-scroll"><div class="board-grid" id="board-grid" style="--board-rows:${Math.ceil(r.items.length/(matchMedia('(orientation:landscape) and (max-height:580px)').matches?7:4))}">${boardCards()}</div></div></div>
+      <footer class="game-actions">${state.guessMode?`<button class="btn btn-danger" data-action="guess-cancel">✕ CANCELAR</button><button class="btn btn-primary" data-action="guess-final" ${!state.guessId||!canEditBoard()?'disabled':''}>✓ CONFIRMAR</button>`:`<button class="btn btn-yellow" data-action="next" ${!isMyTurn()&&!isHost()?'disabled':''}>${flatIcon('pass')}<span>PASSAR</span></button><button class="btn btn-primary" data-action="guess-open" ${!isMyTurn()?'disabled':''}>${flatIcon('guess')}<span>PALPITE</span></button>`}</footer></div>`;updateClock();}
   function renderFinished(){const r=state.room;const ranks=[...r.players].sort((a,b)=>(a.rank??99)-(b.rank??99)||a.seat-b.seat);const ready=r.players.filter(p=>p.ready).length;
-    el.innerHTML=`<div class="room-shell end-cover">${header(`SALA ${r.code}`,true)}<main class="end-screen"><div class="finish-illustration"><img src="assets/celebration.svg" alt="Troféu colorido"/><h1 class="end-banner">Ranking<span>!</span></h1></div><div class="end-names">${ranks.map((p,i)=>`<div class="result-row result-shape-${i%4} ${p.rank===1?'winner':''}"><strong>${p.rank?rankLabel(p.rank):'—'}</strong><span class="result-person">${esc(p.name)}${p.is_me?' · você':''}</span><small>${esc(p.identity?.name||'?')}</small></div>`).join('')}</div><div class="end-actions"><button class="btn btn-primary" data-action="ready-again" ${me()?.ready?'disabled':''}>${me()?.ready?'✓ Pronto':'↻ Jogar de novo'} <span class="ready-count">${ready}/${r.players.length}</span></button>${isHost()?`<button class="btn btn-cyan" data-action="new-game">✦ Novo jogo</button><button class="btn btn-ghost" data-action="close-room-open">Encerrar sala</button>`:'<button class="btn btn-ghost" data-action="leave-open">Sair</button>'}</div></main></div>`;}
+    el.innerHTML=`<div class="room-shell end-cover">${header('',true)}<main class="end-screen"><div class="finish-illustration"><img src="assets/cat-sports.png" class="pixel-cup pixel-trophy" alt="" aria-hidden="true"><h1 class="end-banner">RESULTADO FINAL</h1></div><div class="end-names">${ranks.map((p,i)=>`<div class="result-row ${p.rank===1?'winner':''}"><strong class="rank-tile">${p.rank?rankLabel(p.rank):'—'}</strong><span class="result-avatar">${playerAvatar(p,i)}</span><span class="result-person">${esc(p.name)}${p.is_me?' · você':''}</span><small>${esc(p.identity?.name||'?')}</small></div>`).join('')}</div><div class="end-actions"><button class="btn btn-primary" data-action="ready-again" ${me()?.ready?'disabled':''}>${me()?.ready?'✓ Pronto':'↻ Jogar de novo'} <span class="ready-count">${ready}/${r.players.length}</span></button>${isHost()?`<button class="btn btn-cyan" data-action="new-game">✦ Novo jogo</button><button class="btn btn-ghost" data-action="close-room-open">Encerrar sala</button>`:'<button class="btn btn-ghost" data-action="leave-open">Sair</button>'}</div></main></div>`;}
   function renderRoom(){if(!state.room){renderHome();return;}if(state.room.status==='lobby')renderLobby();else if(state.room.status==='playing')renderGame();else renderFinished();}
   function renderAdmin(){
     const categories=state.categories;
@@ -258,11 +286,11 @@
     if(m.type==='guess'){html=modalMarkup('PALPITE!',`<p class="subcopy">Escolha uma opção.</p><input type="search" class="text-input" id="guess-search" placeholder="Buscar uma opção..." value="${esc(state.guessFilter)}"><label style="font-size:12px;display:flex;gap:7px;align-items:center;margin-top:10px;font-weight:700"><input type="checkbox" id="guess-show-elim" ${state.showEliminated?'checked':''}> Mostrar também itens eliminados</label><div class="guess-list" id="guess-list">${guessOptions()}</div>`,`<button class="btn btn-ghost" data-action="modal-close">CANCELAR</button><button class="btn btn-primary" data-action="guess-confirm" ${!state.guessId?'disabled':''}>CONFIRMAR!</button>`,true);}
     if(m.type==='guess-check'){const chosen=state.room?.items?.find(i=>i.id===state.guessId);html=modalMarkup('CONFIRMAR?',`<div class="guess-confirm-card">${imgHtml(chosen?.image_url,chosen?.name)}<strong>${esc(chosen?.name||'')}</strong></div>`,`<button class="btn btn-ghost" data-action="guess-back">VOLTAR</button><button class="btn btn-primary" data-action="guess-final">CONFIRMAR!</button>`);}
     if(m.type==='guess-result'){
-      const successful=!!m.correct;
-      html=modalMarkup(successful?'Acertou!':'Ainda não!',
-        `<div class="guess-result-art ${successful?'yes':'no'}"><span class="result-symbol">${successful?'✦':'✳'}</span></div><div class="guess-result-label">${successful?`${rankLabel(m.rank)} lugar`:'Tente na próxima!'}</div>`,
-        `<button class="btn ${successful?'btn-primary':'btn-cyan'}" data-action="modal-close">Voltar</button><div class="guess-result-track" aria-hidden="true"><div id="guess-result-fill"></div></div>`,false,false);
+      const successful=!!m.correct;const chosen=state.room?.items?.find(i=>i.id===m.itemId);
+      html=modalMarkup('',`<div class="pixel-result-view ${successful?'result-correct':'result-wrong'}"><h2 class="pixel-result-title ${successful?'yes':'no'}">VOCÊ<br>${successful?'ACERTOU!':'ERROU!'}</h2><div class="result-picked">${chosen&&safeImg(chosen.image_url)?imgHtml(chosen.image_url,chosen.name):'<span class="result-mystery">★</span>'}<strong>${esc(chosen?.name||'')}</strong></div><div class="guess-result-label">${successful?`${rankLabel(m.rank)} LUGAR!`:'TENTE NOVAMENTE!'}</div></div>`,
+        `<button class="btn ${successful?'btn-primary':'btn-danger'}" data-action="modal-close">VOLTAR</button><div class="guess-result-track" aria-hidden="true"><div id="guess-result-fill"></div></div>`,false,false);
     }
+    if(m.type==='avatar-picker'){html=modalMarkup('ESCOLHA SEU AVATAR',`<div class="avatar-picker">${Array.from({length:4},(_,i)=>`<button class="avatar-pick ${avatarIndex(me(),0)===i?'selected':''}" data-action="avatar-choose" data-index="${i}" aria-label="Avatar ${i+1}">${avatarSprite(i)}${avatarIndex(me(),0)===i?'<span>✓</span>':''}</button>`).join('')}</div><p class="subcopy avatar-note">Você pode usar o mesmo avatar de outro jogador.</p>`,`<button class="btn btn-ghost" data-action="modal-close">VOLTAR</button>`);}
     if(m.type==='admin-delete'){html=modalMarkup('EXCLUIR?',`<p>${esc(m.label)}</p>`,`<button class="btn btn-ghost" data-action="modal-close">CANCELAR</button><button class="btn btn-primary" data-action="admin-delete-confirm">EXCLUIR</button>`);}
     if(m.type==='custom'){initialCustom();html=modalMarkup('✨ CRIE SEU TEMA!',`<div class="notice">Somente para esta partida. Imagens são reduzidas no seu aparelho e ficam temporariamente na sala.</div><div class="field" style="margin-top:13px"><label>NOME DO SEU TEMA</label><input class="text-input" id="custom-title" placeholder="Ex: Personagens do nosso grupo" maxlength="65" value="${esc(state.customTitle)}"></div><div class="field"><label>ADICIONAR VÁRIOS ITENS DE UMA VEZ (UM POR LINHA)</label><textarea class="text-input" id="custom-bulk" placeholder="Mario\nLuigi\nPeach\nYoshi..."></textarea><button class="btn btn-sm btn-cyan" style="align-self:start" data-action="custom-bulk-add">+ ADICIONAR ESSAS LINHAS</button></div><p class="tiny-label">ITENS DO TEMA <span id="custom-count">${state.customItems.length}</span> • MÍNIMO 16</p><div class="custom-grid" id="custom-grid">${customItemsHtml()}</div><div class="custom-options"><button class="btn btn-sm btn-yellow" data-action="custom-add">+ ITEM</button><button class="btn btn-sm" data-action="custom-add-8">+ 8 ITENS</button></div>`,`<button class="btn btn-ghost" data-action="modal-close">CANCELAR</button><button class="btn btn-primary" data-action="custom-save">✓ USAR TEMA</button>`,true);}
     if(m.type==='admin-cat'){const c=state.categories.find(x=>x.id===m.id);html=modalMarkup(c?'EDITAR TEMA':'NOVO TEMA',`<div class="field"><label>NOME</label><input id="cat-name" class="text-input" maxlength="65" value="${esc(c?.name||'')}"></div><div class="field"><label>EMOJI</label><input id="cat-emoji" class="text-input" maxlength="6" value="${esc(c?.emoji||'💥')}"></div><div class="field"><label>COR DO CARD</label><input id="cat-color" type="color" value="${safeColor(c?.color)}" style="width:100%;height:48px;border:0;border-radius:16px"></div><label style="display:flex;gap:7px;align-items:center;font-weight:800"><input id="cat-active" type="checkbox" ${c?.active!==false?'checked':''}> Disponível para os jogadores</label>`,`<button class="btn btn-ghost" data-action="modal-close">CANCELAR</button><button class="btn btn-primary" data-action="admin-save-cat">SALVAR</button>`);}
@@ -343,20 +371,24 @@
       return;
     }
     if(type==='next')return await doAction('next');
-    if(type==='guess-open'){if(!isMyTurn())return showToast('Espere a sua vez!');state.guessId=null;state.guessFilter='';state.showEliminated=false;state.modal={type:'guess'};return renderModal();}
+    if(type==='guess-open'){if(!canEditBoard())return showToast('Espere a sua vez!');state.guessId=null;state.guessMode=true;renderGame();return;}
+    if(type==='guess-cancel'){state.guessMode=false;state.guessId=null;renderGame();return;}
+    if(type==='guess-pick'){if(!state.guessMode||!canEditBoard())return;state.guessId=id;const pos=document.getElementById('board-scroll')?.scrollTop||0;renderGame();const scroll=document.getElementById('board-scroll');if(scroll)scroll.scrollTop=pos;return;}
+    if(type==='avatar-open'){if(!me())return;state.modal={type:'avatar-picker'};renderModal();return;}
+    if(type==='avatar-choose'){if(!me())return;const index=Number(button.dataset.index);if(!Number.isInteger(index)||index<0||index>3)return;state.avatars[me().id]=index;saveAvatars();broadcastAvatar(me().id,index);state.modal=null;document.getElementById('overlay')?.remove();render();return;}
     if(type==='guess-select'){state.guessId=id;return refreshGuess();}
     if(type==='guess-confirm'){if(!state.guessId)return showToast('Selecione uma opção.');state.modal={type:'guess-check'};renderModal();return;}
     if(type==='guess-back'){state.modal={type:'guess'};renderModal();return;}
     if(type==='guess-final'){
-      if(state.busy)return;
+      if(state.busy||!state.guessMode||!state.guessId||!canEditBoard())return;
       await safeCall(async()=>{
-        const submittedId=state.guessId;
+        const submittedId=state.guessId;state.guessMode=false;state.guessId=null;renderGame();
         await rpc('qe_action',{p_token:state.token,p_action:'guess',p_data:{item_id:submittedId}});
         pingPeers();
         await getState(true);
         const player=me();
         const rank=player?.rank||null;
-        state.modal={type:'guess-result',correct:!!rank,rank,endsAt:Date.now()+5000};
+        state.modal={type:'guess-result',correct:!!rank,rank,itemId:submittedId,endsAt:Date.now()+5000};
         renderModal();
       });return;
     }
@@ -391,6 +423,7 @@
   });
   document.addEventListener('input', event=>{
     const t=event.target;if(t.id==='player-name')state.name=t.value;
+    if(t.id==='theme-search'){state.categoryQuery=t.value;const list=document.getElementById('theme-list');if(list)list.innerHTML=themeCards();}
     if(t.id==='join-code')state.entryCode=t.value.toUpperCase();
     if(t.id==='item-count'){const max=itemsFor(state.selectedCategory).length;state.count=Math.max(16,Math.min(max,Number(t.value)||16));}
     if(t.id==='custom-title')state.customTitle=t.value;
@@ -410,7 +443,7 @@
       await safeCall(async()=>{showToast('Enviando a imagem...');const url=await adminUpload(file);const field=document.getElementById(t.id==='admin-image-file'?'admin-new-image':'edit-item-image');if(field)field.value=url;showToast('Imagem enviada ao R2!',true);});
     }
   });
-  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&state.modal){state.modal=null;document.getElementById('overlay')?.remove();}if(e.key==='Enter'&&e.target.id==='join-code'){e.preventDefault();void join();}if(e.key==='Enter'&&e.target.id==='player-name'){e.preventDefault();if(state.homeMode==='join')void join();else void create();}});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&state.modal){state.modal=null;document.getElementById('overlay')?.remove();}else if(e.key==='Escape'&&state.guessMode){state.guessMode=false;state.guessId=null;renderGame();}if(e.key==='Enter'&&e.target.id==='join-code'){e.preventDefault();void join();}if(e.key==='Enter'&&e.target.id==='player-name'){e.preventDefault();if(state.homeMode==='join')void join();else void create();}});
   document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.token)void getState();});
   window.addEventListener('beforeunload',()=>{}); // Sem logout por refresh ou troca de aba.
 
