@@ -1,37 +1,39 @@
-# Quem É?! v10 — Pixel Arcade
+# Quem É?! v11 — Pixel Arcade / AltiGames
 
-Versão estática para GitHub Pages. Extraia o conteúdo deste ZIP na raiz do repositório. Não precisa de Node, compilação ou Worker local.
+Pacote do frontend estático pronto para **GitHub Pages**, sem dependências de build. **Esta versão requer migração SQL antes de publicar.**
 
-## Mudanças implementadas
+## Novidades v11
 
-- **Home:** novo background PNG com cubo de interrogação ampliado e centralizado, mantendo logo e botões HTML independentes.
-- **Lobby do host:** código da sala sem duplicação; três ícones de compartilhamento em keycaps azuis; coroa simples em PNG transparente; clique no próprio avatar abre seleção de quatro personagens, com repetições permitidas.
-- **Temas:** lista compacta de uma coluna com busca instantânea, rolagem interna, ícones Pixel Art em PNG e possibilidade de adicionar novos temas pelo admin sem alterar código.
-- **Configuração:** botões `+` e `−` em estilo arcade; relógio Pixel Art PNG; tempo infinito em botão de largura total, símbolo infinito em PNG.
-- **Lobby do jogador:** background exclusivo da nave, jogadores em fila com até cinco por linha, nomes sob os avatares, coroa acima do host, barra decorativa animada, botão vermelho para sair.
-- **Partida:** turno sem moldura, cronômetro com moldura Pixel Art espessa e tabuleiro dimensionado pela área disponível, com cards de bordas mais grossas.
-- **Palpite:** acontece no tabuleiro, sem popup de escolha. Todos os itens ficam em preto e branco; um toque colore apenas o item escolhido; ações viram Cancelar (vermelho) e Confirmar (verde). Itens já eliminados com X continuam elegíveis.
-- **Resultado do palpite:** popup ornamentado e estrelado, variações de acerto (verde) e erro (vermelho mais apagado), nome/imagem do item e fechamento automático em 5 segundos.
-- **Resultado final:** classificação compacta, posições em badges pixelados, avatares, nomes e itens no lugar de pontos. Mantém Jogar de novo / Novo jogo / Encerrar sala (host).
+- Até **12 participantes** (antes: 5), com rolagem da lista no lobby.
+- Barra inferior da partida com **três ícones**, sem rótulos: Jogadores | **Home** (maior, central, amarelo) | Meu tabuleiro.
+- **Home** acompanha o jogador ativo, o tempo e o tabuleiro real dele; só o dono edita. A identidade do jogador da vez é mostrada aos demais, mas **nunca ao próprio jogador antes do acerto**.
+- **Jogadores** apresenta todos os nomes, avatares e identidades (a própria continua secreta).
+- **Meu tabuleiro** mantém suas marcações disponíveis mesmo quando outro jogador está na vez. O host pode habilitar edição contínua nas configurações antes de jogar (desabilitada por padrão).
+- Os X de cada jogador são sincronizados pelo Supabase via RPC, separados por jogador e por rodada. Não há acesso público direto à tabela de tabuleiros.
+- **Passar** só funciona para o jogador da vez. O host não tem mais privilégio para passar o turno dos demais; a regra é validada no Supabase.
+- Palpite, temporizador, avatares, admin, temas personalizados, revanche, novo jogo, ranking e layout Pixel Art da v10.1 preservados.
 
-## Infraestrutura e dados
+## Implantação obrigatória (ordem)
 
-- **Supabase:** preservados o projeto, as tabelas, e as funções `qe_*` da v9. **Não há SQL adicional obrigatório** para essa versão.
-- **Cloudflare R2:** as imagens das categorias são servidas pelas URLs cadastradas. Upload administrativo direto depende do Worker já aceitar `game=quem-e` e do CORS do domínio publicado.
-- **Avatares personalizados:** escolha visual por partida guardada no `sessionStorage` do navegador e anunciada aos outros jogadores pelo canal Supabase Realtime (`avatar`/`avatar-hello`). Essa escolha **não é salva no banco**. Um visitante que não receber esses eventos poderá ver temporariamente o avatar padrão. As quatro opções podem se repetir.
-- **Fontes:** Pixelify Sans e Press Start 2P carregadas do Google Fonts, com fallback do navegador.
-- **Admin oculto:** `admin.html` continua disponível somente pelo endereço direto e login Supabase Auth existente; não aparece na home.
+1. **Faça backup** do projeto Supabase e da versão atual do repositório.
+2. Abra o **SQL Editor** do projeto Supabase atual e execute todo o arquivo separado `quem-e-v11-supabase.sql` fornecido com esta entrega. Esta migração altera somente objetos `qe_*`. Ao final, verifique que o SQL retornou 5 funções, 1 coluna e a tabela `qe_player_boards`.
+3. Se o SQL apontar uma incompatibilidade de funções, **não publique a v11 ainda**: o arquivo realiza transação com rollback em caso de erro; compartilhe a mensagem exata para adaptar a migração à sua instalação.
+4. Extraia o ZIP na raiz do repositório da versão v10.1; inclua `index.html`, `admin.html`, `.nojekyll`, `README.md` e `assets/`. Preserve o valor já configurado de `assets/config.js` no seu repositório se for diferente do arquivo de exemplo.
+5. Publique no GitHub Pages e faça atualização sem cache (Ctrl+Shift+R no desktop ou janela privada no celular).
+6. Teste com **2 a 3 dispositivos reais**: edição desabilitada, edição habilitada, sincronização de X, visualização de identidades e passagem de turno, depois uma sala de mais de 5 participantes.
 
-## Publicação
+## Regras e segurança
 
-1. Faça backup da v9 do repositório.
-2. Substitua os arquivos da raiz pelo conteúdo do ZIP. Mantenha `assets/config.js` com a URL e a chave **pública** existentes do Supabase.
-3. Aguarde o GitHub Pages publicar; recarregue ignorando o cache.
-4. Teste uma sala real com 2 a 5 celulares: avatar, tempo, palpite certo/errado, saída, revanche, novo jogo e encerramento.
+- A configuração é de **sala** e só pode ser alterada pelo **host no lobby**.
+- A alteração de um X usa `qe_board_toggle` e exige token de sessão válido. O backend verifica sala, item e se o jogador tem direito a editar naquele momento.
+- `qe_board_state` só retorna tabuleiros de participantes autenticados com token de sessão da mesma sala.
+- A configuração habilitada **não** autoriza palpite, passagem de turno ou edição no tabuleiro de outra pessoa. O próprio turno continua controlando essas ações.
+- Os tabuleiros são **temporários**: removidos quando a sala é excluída e reiniciados no próximo round; não são salvos como temas permanentes.
+- A v11 não altera Cloudflare R2 nem o catálogo permanente.
+- A página administrativa permanece fora da home, acessível por `admin.html` e autenticação existentes.
 
-## Validação
+## Validação local
 
-- Teste de sintaxe JavaScript com `node --check`.
-- Testes de renderização e interação em Chromium com conteúdo injetado e Supabase simulado nas resoluções 320×640, 390×844 e 844×390: home, lobby host, seleção de avatar, catálogo, tabuleiro, entrada/saída do modo de palpite, popup de resultado e ranking.
-- Teste visual adicional do lobby de jogador sem host.
-- **Não foi possível testar diretamente no Supabase real**. A navegação do navegador automatizado a sites locais foi bloqueada pelo ambiente, por isso os testes foram feitos com HTML/CSS/JS injetados e dados simulados. Verifique o multiplayer e os assets após deploy.
+- `node --check assets/app.js` sem erros de sintaxe.
+- Renderização/interação em Chromium com Supabase simulado para sala de 12 jogadores em 390×844 e 844×390: troca de abas, identidade própria oculta, host sem botão de passagem alheia, edição fora da vez desligada/ligada, marcação pela RPC simulada e lobby de 12 jogadores.
+- **Migração SQL e Realtime reais ainda não testados no projeto de produção.** Execute SQL primeiro e valide a comunicação em dispositivos diferentes antes de adotar em uma partida real.
