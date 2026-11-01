@@ -1,4 +1,4 @@
-/* QUEM É?! v11 — multiplayer 2-12, 3 abas, tabuleiros sincronizados e edicao opcional. */
+/* QUEM É?! v11.3 — configuracao de chute unico com eliminacao, protegido no banco. */
 (() => {
   'use strict';
   const cfg = window.QE_CONFIG || {};
@@ -22,10 +22,10 @@
   const imgHtml = (url, alt='') => safeImg(url) ? `<img src="${esc(url)}" alt="${esc(alt)}" loading="lazy">` : '';
   const me = () => state.room?.players?.find(p=>p.is_me);
   const isHost = () => !!me()?.is_host;
-  const isMyTurn = () => state.room?.status==='playing' && state.room.turn_player_id===state.room.me && !me()?.rank;
+  const isMyTurn = () => state.room?.status==='playing' && state.room.turn_player_id===state.room.me && !me()?.rank && !me()?.eliminated;
   const turnHasTime = () => !state.room?.turn_ends_at || (Date.now()+state.timeOffset)<Date.parse(state.room.turn_ends_at);
   const canGuessNow = () => isMyTurn() && turnHasTime();
-  const canEditBoard = () => state.room?.status==='playing' && !me()?.rank &&
+  const canEditBoard = () => state.room?.status==='playing' && !me()?.rank && !me()?.eliminated &&
     (state.room.allow_board_edit_anytime || (isMyTurn() && turnHasTime()));
   const boardOwner = () => state.activeTab==='mine' ? state.room?.me : state.room?.turn_player_id;
   const canEditVisibleBoard = () => state.activeTab!=='players' && boardOwner()===state.room?.me && canEditBoard();
@@ -67,8 +67,8 @@
     return `<svg class="category-art" viewBox="0 0 100 100" aria-hidden="true">${shapes}</svg>`;
   };
   const initial = name => [...String(name||'?').trim()][0]?.toLocaleUpperCase('pt-BR') || '?';
-  const avatarIndex=(player,i=0)=> Number.isInteger(state.avatars[player?.id]) ? state.avatars[player.id] : i%4;
-  const avatarSprite=(i,name='')=>`<img class="pixel-avatar" src="assets/avatar-${(i%4)+1}.png" loading="lazy" alt="" aria-hidden="true">`;
+  const avatarIndex=(player,i=0)=> Number.isInteger(state.avatars[player?.id]) ? state.avatars[player.id] : i%14;
+  const avatarSprite=(i,name='')=>`<img class="pixel-avatar" src="assets/avatar-${(i%14)+1}.png" loading="lazy" alt="" aria-hidden="true">`;
   const playerAvatar=(player,i)=>avatarSprite(avatarIndex(player,i),player?.name);
   const hostCrown=()=>'<img src="assets/host-crown.png" class="host-crown" alt="Host">';
   function avatarStoreKey(){return `qe-avatar-${state.code||state.room?.code||''}`;}
@@ -120,6 +120,10 @@
       if(state.leaving || !state.token)return;
       next.boards=boardData.boards||{};
       next.allow_board_edit_anytime=!!boardData.allow_board_edit_anytime;
+      next.allow_duplicate_identities=!!boardData.allow_duplicate_identities;
+      next.one_guess_only=!!boardData.one_guess_only;
+      const eliminatedIds=new Set(boardData.eliminated_players||[]);
+      next.players=(next.players||[]).map(p=>({...p,eliminated:eliminatedIds.has(p.id)}));
       state.timeOffset=Date.parse(next.server_time)-Date.now();
       const sig=JSON.stringify({...next,server_time:null});
       const changed=(sig!==state.lastSignature || force);
@@ -138,7 +142,7 @@
         if(was&&was.turn_number!==next.turn_number){state.guessMode=false;state.guessId=null;}
         if(was?.status!=='finished'&&next.status==='finished'&&state.modal?.type!=='guess-result'){state.modal=null;state.guessMode=false;}
         render();
-        if(was&&next.last_event?.type==='wrong'&&next.turn_number!==was.turn_number)showToast(`${next.last_event.player} errou o palpite! Próxima vez.`,false);
+        if(was&&next.last_event?.type==='wrong'&&next.turn_number!==was.turn_number)showToast(next.one_guess_only?`${next.last_event.player} errou e foi eliminado!`:`${next.last_event.player} errou o palpite! Próxima vez.`,false);
       }
       updateClock();
     } catch(e){
@@ -155,7 +159,7 @@
     state.clock=setInterval(()=>{updateClock();updateResultProgress();},100);
     if(client&&state.code){state.channel=client.channel(`quem-e:${state.code}`,{config:{broadcast:{self:false}}})
       .on('broadcast',{event:'changed'},()=>void getState())
-      .on('broadcast',{event:'avatar'},({payload})=>{if(!payload||!state.room?.players?.some(p=>p.id===payload.playerId)||!Number.isInteger(payload.index)||payload.index<0||payload.index>3)return;state.avatars[payload.playerId]=payload.index;saveAvatars();if(!state.modal||state.modal.type!=='guess-result')render();})
+      .on('broadcast',{event:'avatar'},({payload})=>{if(!payload||!state.room?.players?.some(p=>p.id===payload.playerId)||!Number.isInteger(payload.index)||payload.index<0||payload.index>13)return;state.avatars[payload.playerId]=payload.index;saveAvatars();if(!state.modal||state.modal.type!=='guess-result')render();})
       .on('broadcast',{event:'avatar-hello'},()=>syncAvatarPeers())
       .subscribe(status=>{if(status==='SUBSCRIBED'){syncAvatarPeers();state.channel?.send({type:'broadcast',event:'avatar-hello',payload:{}});}});}
   }
@@ -236,7 +240,9 @@
       ${host?`<label class="theme-search-label"><span>⌕</span><input id="theme-search" type="search" placeholder="Pesquisar temas..." value="${esc(state.categoryQuery)}" aria-label="Pesquisar temas"></label><div class="theme-list" id="theme-list">${themeCards()}</div>
       ${picked?`<div class="choice-controls"><span class="tiny-label">ITENS</span><div class="count-stepper"><button data-action="count-minus" aria-label="Menos itens">−</button><input id="item-count" aria-label="Quantidade de itens" type="number" min="16" max="${max}" value="${state.count}"><button data-action="count-plus" aria-label="Mais itens">+</button></div><button class="btn btn-violet btn-sm" data-action="confirm-theme">✓ ESCOLHER</button></div>`:''}
       <div class="time-config"><span class="comic-time-heading"><img class="time-clock-img" src="assets/pixel-clock.png" alt=""><span>TEMPO POR VEZ</span></span><div class="time-options">${timeControls}</div></div>
-      <div class="board-edit-option"><span class="board-edit-details"><strong>EDITAR FORA DA VEZ</strong><small>Cada jogador pode marcar seu tabuleiro a qualquer momento</small></span><button type="button" role="switch" aria-checked="${!!r.allow_board_edit_anytime}" aria-label="Permitir editar tabuleiro fora da vez" class="pixel-switch ${r.allow_board_edit_anytime?'on':''}" data-action="set-board-edit"><span class="switch-track"><i></i></span><b>${r.allow_board_edit_anytime?'SIM':'NÃO'}</b></button></div>`:
+      <div class="board-edit-option"><span class="board-edit-details"><strong>EDITAR FORA DA VEZ</strong><small>Cada jogador pode marcar seu tabuleiro a qualquer momento</small></span><button type="button" role="switch" aria-checked="${!!r.allow_board_edit_anytime}" aria-label="Permitir editar tabuleiro fora da vez" class="pixel-switch ${r.allow_board_edit_anytime?'on':''}" data-action="set-board-edit"><span class="switch-track"><i></i></span><b>${r.allow_board_edit_anytime?'SIM':'NÃO'}</b></button></div>
+      <div class="board-edit-option duplicate-setting"><span class="board-edit-details"><strong>PERMITIR REPETIDOS</strong><small>Dois ou mais jogadores podem receber a mesma identidade</small></span><button type="button" role="switch" aria-checked="${!!r.allow_duplicate_identities}" aria-label="Permitir identidades repetidas entre jogadores" class="pixel-switch ${r.allow_duplicate_identities?'on':''}" data-action="set-repeats"><span class="switch-track"><i></i></span><b>${r.allow_duplicate_identities?'SIM':'NÃO'}</b></button></div>
+      <div class="board-edit-option one-guess-setting"><span class="board-edit-details"><strong>SOMENTE UM CHUTE</strong><small>Se errar, o jogador é eliminado da disputa, mas permanece na sala para acompanhar.</small></span><button type="button" role="switch" aria-checked="${!!r.one_guess_only}" aria-label="Ativar somente um chute por jogador" class="pixel-switch ${r.one_guess_only?'on':''}" data-action="set-one-guess"><span class="switch-track"><i></i></span><b>${r.one_guess_only?'SIM':'NÃO'}</b></button></div>`:
       `<div class="round-comic-summary"><div class="summary-tile theme-summary"><span class="summary-label">TEMA</span><strong>${r.theme_name?esc(r.theme_name):'AGUARDANDO...'}</strong><span>${r.target_count||'—'} ITENS</span></div><div class="summary-tile time-summary">${flatIcon('clock')}<span class="summary-label">TEMPO</span><strong>${r.turn_seconds===null?'∞':r.turn_seconds+'s'}</strong></div></div>`}
       
       </section></div></main><footer class="lobby-bottom">${host?`<button class="btn btn-primary" data-action="start" ${!r.theme_name||r.players.length<2?'disabled':''}>▶ JOGAR</button>`:'<span class="sticker">⏳ AGUARDANDO</span>'}</footer></div>`;
@@ -249,7 +255,7 @@
       const size=item.name.length>48?'ultra':item.name.length>31?'long':item.name.length>18?'medium':'short';
       const chosen=guessing&&state.guessId===item.id;
       const title=guessing?`Palpite: ${item.name}`:editable?`${item.name} — ${marks.has(item.id)?'restaurar':'eliminar'}`:`${item.name} — somente visualizacao`;
-      return `<button type="button" aria-pressed="${guessing?chosen:marks.has(item.id)}" aria-disabled="${!editable}" class="item-card flat-tone-${i%6} ${hasImage?'with-image':'text-only'} ${!guessing&&marks.has(item.id)?'eliminated':''} ${guessing?'guess-candidate':''} ${chosen?'guess-selected':''}" data-action="${guessing?'guess-pick':'mark'}" data-id="${item.id}" title="${esc(title)}" ${editable?'':'disabled'}><span class="item-ink"><span class="card-art">${hasImage?imgHtml(item.image_url,item.name):`<span class="card-fullname ${size}">${name}</span>`}</span>${hasImage?`<span class="card-title">${name}</span>`:''}</span></button>`;
+      return `<button type="button" aria-pressed="${guessing?chosen:marks.has(item.id)}" aria-disabled="${!editable}" class="item-card flat-tone-${i%6} ${hasImage?'with-image':'text-only'} ${marks.has(item.id)&&!chosen?'eliminated':''} ${guessing?'guess-candidate':''} ${chosen?'guess-selected':''}" data-action="${guessing?'guess-pick':'mark'}" data-id="${item.id}" title="${esc(title)}" ${editable?'':'disabled'}><span class="item-ink"><span class="card-art">${hasImage?imgHtml(item.image_url,item.name):`<span class="card-fullname ${size}">${name}</span>`}</span>${hasImage?`<span class="card-title">${name}</span>`:''}</span></button>`;
     }).join('');
   }
   function navIcon(name){
@@ -265,7 +271,7 @@
     <button type="button" class="game-tab game-tab-home ${state.activeTab==='home'?'selected':''}" data-action="tab-home" aria-label="Home: tabuleiro de quem esta na vez" title="Home" aria-current="${state.activeTab==='home'?'page':'false'}">${navIcon('home')}</button>
     <button type="button" class="game-tab ${state.activeTab==='mine'?'selected':''}" data-action="tab-mine" aria-label="Meu tabuleiro" title="Meu tabuleiro" aria-current="${state.activeTab==='mine'?'page':'false'}">${navIcon('board')}</button>
   </nav>`;}
-  function renderPlayersTab(){return `<section class="game-players-page"><div class="players-tab-top"><h2>JOGADORES</h2><strong>${state.room.players.length}/12</strong></div><div class="players-tab-scroll">${state.room.players.map((p,i)=>`<div class="players-tab-row ${p.id===state.room.turn_player_id?'current':''}"><div class="players-tab-photo">${playerAvatar(p,i)}${p.is_host?hostCrown():''}</div><div class="players-tab-name"><b>${esc(p.name)}${p.is_me?' (VOCÊ)':''}</b><span>${p.is_me&&!p.rank?'IDENTIDADE SECRETA':esc(p.identity?.name||'???')}</span></div>${p.id===state.room.turn_player_id?'<span class="players-tab-turn">VEZ</span>':''}${p.rank?`<span class="players-tab-rank">${rankLabel(p.rank)}</span>`:''}</div>`).join('')}</div></section>`;}
+  function renderPlayersTab(){return `<section class="game-players-page"><div class="players-tab-top"><h2>JOGADORES</h2><strong>${state.room.players.length}/12</strong></div><div class="players-tab-scroll">${state.room.players.map((p,i)=>`<div class="players-tab-row ${p.id===state.room.turn_player_id?'current':''} ${p.eliminated?'is-eliminated':''}"><div class="players-tab-photo">${playerAvatar(p,i)}${p.is_host?hostCrown():''}</div><div class="players-tab-name"><b>${esc(p.name)}${p.is_me?' (VOCÊ)':''}</b><span>${p.is_me&&!p.rank?'IDENTIDADE SECRETA':esc(p.identity?.name||'???')}</span></div>${p.eliminated?'<span class="players-tab-eliminated">ELIMINADO</span>':p.id===state.room.turn_player_id?'<span class="players-tab-turn">VEZ</span>':p.rank?`<span class="players-tab-rank">${rankLabel(p.rank)}</span>`:''}</div>`).join('')}</div></section>`;}
   function boardPanel(ownerId){
     const owner=state.room.players.find(p=>p.id===ownerId);
     const mine=ownerId===state.room.me;
@@ -287,14 +293,14 @@
   function renderGame(){
     const r=state.room,current=r.players.find(p=>p.id===r.turn_player_id),ranked=!!me()?.rank;
     const showHome=state.activeTab==='home',showMine=state.activeTab==='mine';
-    const hero=showHome?`<section class="game-top"><div class="turn-banner"><div class="turn-copy"><div class="turn-heading">${isMyTurn()?'SUA VEZ!':`VEZ DE ${esc(current?.name||'...')}`}</div><div class="turn-hint">${current?.id===r.me?'SUA IDENTIDADE: ???':`É: ${esc(current?.identity?.name||'???')}`}</div></div></div><div class="clock-box"><span id="clock-number" class="clock-number">${r.turn_seconds===null?'∞':'--'}</span>${r.turn_seconds===null?'':'<span class="clock-unit">s</span>'}</div></section>`:'';
+    const hero=showHome?`<section class="game-top"><div class="turn-banner"><div class="turn-copy"><div class="turn-heading">${isMyTurn()?'SUA VEZ!':`VEZ DE ${esc(current?.name||'...')}`}</div><div class="turn-identity ${current?.id===r.me?'is-secret':''}"><span>IDENTIDADE</span><strong>${current?.id===r.me?'???':esc(current?.identity?.name||'???')}</strong></div></div></div><div class="clock-box"><span id="clock-number" class="clock-number">${r.turn_seconds===null?'∞':'--'}</span>${r.turn_seconds===null?'':'<span class="clock-unit">s</span>'}</div></section>`:'';
     const boardArea=state.activeTab==='players'?renderPlayersTab():boardPanel(showMine?r.me:r.turn_player_id);
     const actions=state.activeTab==='players'?'':(state.guessMode?`<footer class="game-actions"><button class="btn btn-danger" data-action="guess-cancel">✕ CANCELAR</button><button class="btn btn-primary" data-action="guess-final" ${!state.guessId||!canGuessNow()?'disabled':''}>✓ CONFIRMAR</button></footer>`:(showHome&&isMyTurn()?`<footer class="game-actions"><button class="btn btn-yellow" data-action="next" ${!canGuessNow()?'disabled':''}>${flatIcon('pass')}<span>PASSAR</span></button><button class="btn btn-primary" data-action="guess-open" ${!canGuessNow()?'disabled':''}>${flatIcon('guess')}<span>PALPITE</span></button></footer>`:showMine&&r.allow_board_edit_anytime?'<div class="game-board-hint">MARQUE SUAS OPÇÕES A QUALQUER MOMENTO</div>':''));
-    el.innerHTML=`<div class="game-screen game-v11">${header(r.theme_name,true)}${hero}${!showHome&&!showMine?'':showMine?`<div class="mine-turn-mini">${ranked?`VOCÊ: ${rankLabel(me().rank)} LUGAR`:`${current?.id===r.me?'SUA VEZ':'VEZ DE '+esc(current?.name||'...')}`}</div>`:''}${boardArea}${actions}${gameNav()}</div>`;
+    el.innerHTML=`<div class="game-screen game-v11">${header(r.theme_name,true)}${gameNav()}${hero}${me()?.eliminated&&showHome?'<div class="eliminated-notice" role="status">✕ VOCÊ FOI ELIMINADO • ACOMPANHE A PARTIDA</div>':''}${!showHome&&!showMine?'':showMine?`<div class="mine-turn-mini">${me()?.eliminated?'✕ VOCÊ FOI ELIMINADO':ranked?`VOCÊ: ${rankLabel(me().rank)} LUGAR`:`${current?.id===r.me?'SUA VEZ':'VEZ DE '+esc(current?.name||'...')}`}</div>`:''}${boardArea}${actions}</div>`;
     updateClock();
   }
   function renderFinished(){const r=state.room;const ranks=[...r.players].sort((a,b)=>(a.rank??99)-(b.rank??99)||a.seat-b.seat);const ready=r.players.filter(p=>p.ready).length;
-    el.innerHTML=`<div class="room-shell end-cover">${header('',true)}<main class="end-screen"><div class="finish-illustration"><img src="assets/cat-sports.png" class="pixel-cup pixel-trophy" alt="" aria-hidden="true"><h1 class="end-banner">RESULTADO FINAL</h1></div><div class="end-names">${ranks.map((p,i)=>`<div class="result-row ${p.rank===1?'winner':''}"><strong class="rank-tile">${p.rank?rankLabel(p.rank):'—'}</strong><span class="result-avatar">${playerAvatar(p,i)}</span><span class="result-person">${esc(p.name)}${p.is_me?' · você':''}</span><small>${esc(p.identity?.name||'?')}</small></div>`).join('')}</div><div class="end-actions"><button class="btn btn-primary" data-action="ready-again" ${me()?.ready?'disabled':''}>${me()?.ready?'✓ Pronto':'↻ Jogar de novo'} <span class="ready-count">${ready}/${r.players.length}</span></button>${isHost()?`<button class="btn btn-cyan" data-action="new-game">✦ Novo jogo</button><button class="btn btn-ghost" data-action="close-room-open">Encerrar sala</button>`:'<button class="btn btn-ghost" data-action="leave-open">Sair</button>'}</div></main></div>`;}
+    el.innerHTML=`<div class="room-shell end-cover">${header('',true)}<main class="end-screen"><div class="finish-illustration"><img src="assets/cat-sports.png" class="pixel-cup pixel-trophy" alt="" aria-hidden="true"><h1 class="end-banner">RESULTADO FINAL</h1></div><div class="end-names">${ranks.map((p,i)=>`<div class="result-row ${p.rank===1?'winner':''} ${p.eliminated?'result-eliminated':''}"><strong class="rank-tile">${p.rank?rankLabel(p.rank):p.eliminated?'✕':'—'}</strong><span class="result-avatar">${playerAvatar(p,i)}</span><span class="result-person">${esc(p.name)}${p.is_me?' · você':''}${p.eliminated?'<span class="result-elim-label">ELIMINADO • PERDEU</span>':''}</span><small>${esc(p.identity?.name||'?')}</small></div>`).join('')}</div><div class="end-actions"><button class="btn btn-primary" data-action="ready-again" ${me()?.ready?'disabled':''}>${me()?.ready?'✓ Pronto':'↻ Jogar de novo'} <span class="ready-count">${ready}/${r.players.length}</span></button>${isHost()?`<button class="btn btn-cyan" data-action="new-game">✦ Novo jogo</button><button class="btn btn-ghost" data-action="close-room-open">Encerrar sala</button>`:'<button class="btn btn-ghost" data-action="leave-open">Sair</button>'}</div></main></div>`;}
   function renderRoom(){if(!state.room){renderHome();return;}if(state.room.status==='lobby')renderLobby();else if(state.room.status==='playing')renderGame();else renderFinished();}
   function renderAdmin(){
     const categories=state.categories;
@@ -331,10 +337,10 @@
     if(m.type==='guess-check'){const chosen=state.room?.items?.find(i=>i.id===state.guessId);html=modalMarkup('CONFIRMAR?',`<div class="guess-confirm-card">${imgHtml(chosen?.image_url,chosen?.name)}<strong>${esc(chosen?.name||'')}</strong></div>`,`<button class="btn btn-ghost" data-action="guess-back">VOLTAR</button><button class="btn btn-primary" data-action="guess-final">CONFIRMAR!</button>`);}
     if(m.type==='guess-result'){
       const successful=!!m.correct;const chosen=state.room?.items?.find(i=>i.id===m.itemId);
-      html=modalMarkup('',`<div class="pixel-result-view ${successful?'result-correct':'result-wrong'}"><h2 class="pixel-result-title ${successful?'yes':'no'}">VOCÊ<br>${successful?'ACERTOU!':'ERROU!'}</h2><div class="result-picked">${chosen&&safeImg(chosen.image_url)?imgHtml(chosen.image_url,chosen.name):'<span class="result-mystery">★</span>'}<strong>${esc(chosen?.name||'')}</strong></div><div class="guess-result-label">${successful?`${rankLabel(m.rank)} LUGAR!`:'TENTE NOVAMENTE!'}</div></div>`,
+      html=modalMarkup('',`<div class="pixel-result-view ${successful?'result-correct':'result-wrong'}"><h2 class="pixel-result-title ${successful?'yes':'no'}">VOCÊ<br>${successful?'ACERTOU!':'ERROU!'}</h2><div class="result-picked">${chosen&&safeImg(chosen.image_url)?imgHtml(chosen.image_url,chosen.name):'<span class="result-mystery">★</span>'}<strong>${esc(chosen?.name||'')}</strong></div><div class="guess-result-label">${successful?`${rankLabel(m.rank)} LUGAR!`:m.eliminated?'VOCÊ FOI ELIMINADO!':'TENTE NOVAMENTE!'}</div></div>`,
         `<button class="btn ${successful?'btn-primary':'btn-danger'}" data-action="modal-close">VOLTAR</button><div class="guess-result-track" aria-hidden="true"><div id="guess-result-fill"></div></div>`,false,false);
     }
-    if(m.type==='avatar-picker'){html=modalMarkup('ESCOLHA SEU AVATAR',`<div class="avatar-picker">${Array.from({length:4},(_,i)=>`<button class="avatar-pick ${avatarIndex(me(),0)===i?'selected':''}" data-action="avatar-choose" data-index="${i}" aria-label="Avatar ${i+1}">${avatarSprite(i)}${avatarIndex(me(),0)===i?'<span>✓</span>':''}</button>`).join('')}</div><p class="subcopy avatar-note">Você pode usar o mesmo avatar de outro jogador.</p>`,`<button class="btn btn-ghost" data-action="modal-close">VOLTAR</button>`);}
+    if(m.type==='avatar-picker'){html=modalMarkup('ESCOLHA SEU AVATAR',`<div class="avatar-picker">${Array.from({length:14},(_,i)=>`<button class="avatar-pick ${avatarIndex(me(),0)===i?'selected':''}" data-action="avatar-choose" data-index="${i}" aria-label="Avatar ${i+1}">${avatarSprite(i)}${avatarIndex(me(),0)===i?'<span>✓</span>':''}</button>`).join('')}</div><p class="subcopy avatar-note">Você pode usar o mesmo avatar de outro jogador.</p>`,`<button class="btn btn-ghost" data-action="modal-close">VOLTAR</button>`);}
     if(m.type==='admin-delete'){html=modalMarkup('EXCLUIR?',`<p>${esc(m.label)}</p>`,`<button class="btn btn-ghost" data-action="modal-close">CANCELAR</button><button class="btn btn-primary" data-action="admin-delete-confirm">EXCLUIR</button>`);}
     if(m.type==='custom'){initialCustom();html=modalMarkup('✨ CRIE SEU TEMA!',`<div class="notice">Somente para esta partida. Imagens são reduzidas no seu aparelho e ficam temporariamente na sala.</div><div class="field" style="margin-top:13px"><label>NOME DO SEU TEMA</label><input class="text-input" id="custom-title" placeholder="Ex: Personagens do nosso grupo" maxlength="65" value="${esc(state.customTitle)}"></div><div class="field"><label>ADICIONAR VÁRIOS ITENS DE UMA VEZ (UM POR LINHA)</label><textarea class="text-input" id="custom-bulk" placeholder="Mario\nLuigi\nPeach\nYoshi..."></textarea><button class="btn btn-sm btn-cyan" style="align-self:start" data-action="custom-bulk-add">+ ADICIONAR ESSAS LINHAS</button></div><p class="tiny-label">ITENS DO TEMA <span id="custom-count">${state.customItems.length}</span> • MÍNIMO 16</p><div class="custom-grid" id="custom-grid">${customItemsHtml()}</div><div class="custom-options"><button class="btn btn-sm btn-yellow" data-action="custom-add">+ ITEM</button><button class="btn btn-sm" data-action="custom-add-8">+ 8 ITENS</button></div>`,`<button class="btn btn-ghost" data-action="modal-close">CANCELAR</button><button class="btn btn-primary" data-action="custom-save">✓ USAR TEMA</button>`,true);}
     if(m.type==='admin-cat'){const c=state.categories.find(x=>x.id===m.id);html=modalMarkup(c?'EDITAR TEMA':'NOVO TEMA',`<div class="field"><label>NOME</label><input id="cat-name" class="text-input" maxlength="65" value="${esc(c?.name||'')}"></div><div class="field"><label>EMOJI</label><input id="cat-emoji" class="text-input" maxlength="6" value="${esc(c?.emoji||'💥')}"></div><div class="field"><label>COR DO CARD</label><input id="cat-color" type="color" value="${safeColor(c?.color)}" style="width:100%;height:48px;border:0;border-radius:16px"></div><label style="display:flex;gap:7px;align-items:center;font-weight:800"><input id="cat-active" type="checkbox" ${c?.active!==false?'checked':''}> Disponível para os jogadores</label>`,`<button class="btn btn-ghost" data-action="modal-close">CANCELAR</button><button class="btn btn-primary" data-action="admin-save-cat">SALVAR</button>`);}
@@ -398,6 +404,8 @@
     if(type==='set-time'){const seconds=button.dataset.seconds==='infinite'?null:Number(button.dataset.seconds);return await doAction('set_time',{seconds});}
     if(type==='start')return await doAction('start');
     if(type==='set-board-edit')return await doAction('set_board_edit',{enabled:!state.room.allow_board_edit_anytime});
+    if(type==='set-repeats')return await doAction('set_repeats',{enabled:!state.room.allow_duplicate_identities});
+    if(type==='set-one-guess')return await doAction('set_one_guess',{enabled:!state.room.one_guess_only});
     if(type.startsWith('tab-')){if(state.room?.status!=='playing')return;state.activeTab=type==='tab-players'?'players':type==='tab-mine'?'mine':'home';state.guessMode=false;state.guessId=null;renderGame();return;}
     if(type==='custom-open'){state.modal={type:'custom'};initialCustom();return renderModal();}
     if(type==='custom-add'){state.customItems.push({name:'',image_url:''});return updateCustomGrid();}
@@ -421,7 +429,7 @@
     if(type==='guess-cancel'){state.guessMode=false;state.guessId=null;renderGame();return;}
     if(type==='guess-pick'){if(!state.guessMode||!canGuessNow())return;state.guessId=id;const pos=document.getElementById('board-scroll')?.scrollTop||0;renderGame();const scroll=document.getElementById('board-scroll');if(scroll)scroll.scrollTop=pos;return;}
     if(type==='avatar-open'){if(!me())return;state.modal={type:'avatar-picker'};renderModal();return;}
-    if(type==='avatar-choose'){if(!me())return;const index=Number(button.dataset.index);if(!Number.isInteger(index)||index<0||index>3)return;state.avatars[me().id]=index;saveAvatars();broadcastAvatar(me().id,index);state.modal=null;document.getElementById('overlay')?.remove();render();return;}
+    if(type==='avatar-choose'){if(!me())return;const index=Number(button.dataset.index);if(!Number.isInteger(index)||index<0||index>13)return;state.avatars[me().id]=index;saveAvatars();broadcastAvatar(me().id,index);state.modal=null;document.getElementById('overlay')?.remove();render();return;}
     if(type==='guess-select'){state.guessId=id;return refreshGuess();}
     if(type==='guess-confirm'){if(!state.guessId)return showToast('Selecione uma opção.');state.modal={type:'guess-check'};renderModal();return;}
     if(type==='guess-back'){state.modal={type:'guess'};renderModal();return;}
@@ -434,7 +442,7 @@
         await getState(true);
         const player=me();
         const rank=player?.rank||null;
-        state.modal={type:'guess-result',correct:!!rank,rank,itemId:submittedId,endsAt:Date.now()+5000};
+        state.modal={type:'guess-result',correct:!!rank,eliminated:!!player?.eliminated,rank,itemId:submittedId,endsAt:Date.now()+5000};
         renderModal();
       });return;
     }

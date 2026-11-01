@@ -295,11 +295,26 @@ button:focus-visible,input:focus-visible{outline:2px solid #6bfaff;outline-offse
 .board-grid{width:100%;flex:1;grid-template-rows:repeat(var(--board-rows,5),minmax(0,1fr));grid-auto-rows:minmax(0,1fr)!important;min-height:max(100%,calc(var(--board-rows,5) * 93px + (var(--board-rows,5) - 1) * 5px));align-content:stretch!important}
 .item-card{border:4px solid #0c0b32!important;outline:2px solid #a37dff;outline-offset:-3px;box-shadow:inset 0 3px #ffefff,0 4px #050622!important;clip-path:polygon(6px 0,calc(100% - 6px) 0,100% 6px,100% calc(100% - 6px),calc(100% - 6px) 100%,6px 100%,0 calc(100% - 6px),0 6px)}
 .item-card::before{content:'';position:absolute;z-index:3;inset:3px;pointer-events:none;box-shadow:inset 0 3px #ffffff5c,inset 0 -4px #15103d61}
-/* Guessing all items stays available including those X-marked on the normal board. */
-.board-guess-mode .item-card .item-ink{filter:grayscale(1) brightness(.68)!important;opacity:.8!important}
-.board-guess-mode .item-card.guess-selected{border-color:#ffda57!important;outline-color:#fff2a5;box-shadow:0 0 0 2px #f9d65f,0 0 18px #ffde7d66!important}
+/* v11.2: the guess board remains in its normal colors. Ordinary eliminations
+   retain their X; selecting any candidate, including an eliminated one, shows
+   a large green check and keeps the rest of the marks unchanged. */
+.board-guess-mode .item-card .item-ink{filter:none!important;opacity:1!important}
+.board-guess-mode .item-card.eliminated .item-ink{filter:grayscale(.8)!important;opacity:.4!important}
+.board-guess-mode .item-card.eliminated::after{display:grid!important}
+.board-guess-mode .item-card.guess-selected{
+  border-color:#49ffa0!important;outline-color:#e0ffe7!important;
+  box-shadow:0 0 0 2px #42f99b,0 0 18px #47ffa477!important
+}
 .board-guess-mode .item-card.guess-selected .item-ink{filter:none!important;opacity:1!important}
-.board-guess-mode .item-card:after{display:none}
+.board-guess-mode .item-card.guess-selected::after{
+  content:'✓';display:grid!important;place-items:center;position:absolute;inset:0;z-index:5;
+  color:#6affaa;background:transparent;pointer-events:none;
+  font:900 clamp(45px,15vw,68px)/1 'Pixelify Sans',monospace;
+  text-shadow:3px 3px #092923,-2px -2px #092923,2px -2px #092923,-2px 2px #092923,0 0 14px #4dfb9a;
+}
+@media (orientation:landscape) and (max-height:580px){
+  .board-guess-mode .item-card.guess-selected::after{font-size:clamp(35px,7vh,54px)}
+}
 .btn-danger{background:#fb3e69!important;color:#fff!important;border-color:#ff9db4!important;box-shadow:inset 0 4px #ff829e,inset 0 -4px #be204e,0 5px #02051e!important}
 
 /* Result dialog: double-layer beveled pixel frame and atmospheric star field. */
@@ -442,3 +457,40 @@ button:focus-visible,input:focus-visible{outline:2px solid #6bfaff;outline-offse
 .waiting-screen .wait-player .wait-portrait{height:clamp(34px,10vw,52px);width:clamp(34px,10vw,52px);max-width:100%;flex:0 0 auto}
 .waiting-screen .wait-player>span{display:block;width:100%;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media(orientation:landscape) and (max-height:580px){.waiting-screen .wait-players{width:min(100%,650px)!important;max-height:76px;grid-template-columns:repeat(6,minmax(0,1fr))!important}.waiting-screen .wait-player .wait-portrait{height:30px;width:30px}.waiting-screen .wait-player>span{font-size:9px}}
+
+/* V11.1 — menu superior, identidade destacada e nova configuracao */
+.game-v11 .game-tabbar{order:0;flex:0 0 auto;align-items:center;max-width:620px;padding:5px 18px 9px;margin:0 auto 2px;background:linear-gradient(180deg,#080e34ed 0%,#080e34e0 72%,transparent 100%);z-index:8}
+.game-v11 .game-tab{height:42px}
+.game-v11 .game-tab-home{height:56px;transform:translateY(1px)}
+.game-v11 .game-tab-home .nav-pixel-icon{width:35px;height:35px}
+.game-v11 .game-top{padding-top:3px}
+.game-v11 .turn-banner{min-height:75px}
+.game-v11 .turn-copy{display:flex;flex-direction:column;gap:5px;min-width:0;width:100%}
+.game-v11 .turn-identity{display:flex;align-items:center;gap:8px;min-width:0;max-width:100%;background:linear-gradient(110deg,#3e1858,#8c287d);border:3px solid #ffcf53;border-bottom-color:#e88c46;padding:6px 8px;box-shadow:inset 0 0 0 2px #e48de5,0 3px 0 #0b0924,0 0 12px #ffdb5280;clip-path:polygon(6px 0,calc(100% - 6px) 0,100% 6px,100% calc(100% - 6px),calc(100% - 6px) 100%,6px 100%,0 calc(100% - 6px),0 6px)}
+.game-v11 .turn-identity span{color:#fff2a3;flex:none;font:700 clamp(8px,2vw,11px)/1.1 var(--pixel,'Courier New',monospace);letter-spacing:.03em}
+.game-v11 .turn-identity strong{color:white;font:700 clamp(16px,4.3vw,24px)/1.1 var(--pixel,'Courier New',monospace);text-shadow:2px 2px #27064a;overflow-wrap:anywhere}
+.game-v11 .turn-identity.is-secret{border-color:#7465cc;background:#25214e;box-shadow:inset 0 0 0 2px #41348f,0 3px #0b0924}
+.game-v11 .turn-identity.is-secret strong{color:#ffda78}
+.duplicate-setting{margin-top:7px}
+.avatar-picker{grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;max-height:min(52vh,390px);overflow-y:auto;padding:4px;scrollbar-color:#8366de #161445}
+.avatar-pick{padding:2px;border-width:2px}
+@media(max-width:520px){.game-v11 .game-tabbar{padding:3px 14px 7px;gap:9px}.game-v11 .game-tab{height:37px}.game-v11 .game-tab-home{height:50px}.game-v11 .game-tab-home .nav-pixel-icon{height:30px;width:30px}.game-v11 .turn-banner{min-height:65px}.game-v11 .turn-identity{padding:4px 6px;gap:5px}.game-v11 .turn-identity span{font-size:8px}.game-v11 .turn-identity strong{font-size:clamp(14px,4vw,19px)}.avatar-picker{gap:4px}}
+@media(orientation:landscape) and (max-height:580px){.game-v11 .game-tabbar{width:min(68%,620px);padding:0 12px 2px;gap:7px}.game-v11 .game-tab{height:29px}.game-v11 .game-tab-home{height:35px;transform:none}.game-v11 .game-tab-home .nav-pixel-icon{height:24px;width:24px}.game-v11 .turn-banner{min-height:42px}.game-v11 .turn-copy{flex-direction:row;align-items:center}.game-v11 .turn-heading{flex:0 0 auto}.game-v11 .turn-identity{padding:3px 5px;max-width:65%}.game-v11 .turn-identity strong{font-size:14px}.game-v11 .turn-identity span{font-size:8px}}
+/* Ajuste final: identidade grande, com leitura instantanea na Home */
+.game-v11 .turn-identity{flex-direction:column;align-items:flex-start;justify-content:center;gap:1px;padding:6px 10px;background:linear-gradient(120deg,#6e174f,#a92b68)}
+.game-v11 .turn-identity span{font-size:clamp(8px,2vw,10px);color:#ffdd73;letter-spacing:.1em}
+.game-v11 .turn-identity strong{color:#fff8c1;font-size:clamp(18px,5vw,26px);line-height:1.1;text-shadow:2px 2px #34082f}
+@media(max-width:520px){.game-v11 .turn-identity{padding:4px 8px;gap:1px}.game-v11 .turn-identity strong{font-size:clamp(18px,4.6vw,22px)}}
+@media(orientation:landscape) and (max-height:580px){.game-v11 .turn-identity{flex-direction:row;align-items:center;gap:7px;padding:3px 8px}.game-v11 .turn-identity strong{font-size:14px}}
+
+/* v11.3 — chute unico: eliminacao visual sem remover o participante da sala */
+.one-guess-setting{margin-top:7px;border-color:#e76c9b}
+.one-guess-setting .board-edit-details strong{color:#ffd869}
+.eliminated-notice{flex:0 0 auto;z-index:2;margin:1px auto 5px;padding:8px 10px;max-width:calc(100% - 20px);border:3px solid #ff637c;background:#47152d;color:#ffe7ef;box-shadow:inset 0 0 0 2px #7d274e,0 3px 0 #070821;text-align:center;font:700 clamp(10px,2.6vw,14px)/1.3 var(--pixel,'Courier New',monospace)}
+.players-tab-row.is-eliminated{background:rgba(69,23,47,.47);opacity:.9}
+.players-tab-row.is-eliminated .players-tab-photo{border-color:#b95879}
+.players-tab-eliminated{flex:0 0 auto;max-width:105px;border:2px solid #ff6a89;background:#521b37;color:#ffd6e4;padding:5px;font:700 clamp(9px,2.4vw,11px)/1.15 var(--pixel,'Courier New',monospace);text-align:center}
+.result-row.result-eliminated .rank-tile{background:#5c2347!important;color:#ffcfdd!important;border-color:#fb7196!important}
+.result-elim-label{display:block;margin-top:5px;color:#ff8faf;font:700 clamp(9px,2.4vw,11px)/1.2 var(--pixel,'Courier New',monospace)}
+.result-row.result-eliminated .result-person{color:#e9bccc!important}
+@media(max-width:350px){.players-tab-eliminated{font-size:8px;max-width:78px;padding:3px}.eliminated-notice{font-size:9px}}
