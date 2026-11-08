@@ -1,4 +1,4 @@
-/* QUEM É?! v11.3 — configuracao de chute unico com eliminacao, protegido no banco. */
+/* QUEM É?! v11.4 — temas personalizados flexiveis, criacao ilimitada e edicao sem bloqueio */
 (() => {
   'use strict';
   const cfg = window.QE_CONFIG || {};
@@ -11,7 +11,7 @@
   const colors = ['#87C7B9','#EDA6A0','#EEC37D','#A5A9D9','#91B8D6','#DAAECA'];
   const state = { room:null, token:null, code:null, categories:[], items:[],
     view:'home', activeTab:'home', boards:{}, homeMode:'choices', name:'', entryCode:'', selectedCategory:'', count:20,
-    customTitle:'', customItems:[], modal:null, guessId:null, guessFilter:'', showEliminated:false, guessMode:false, categoryQuery:'', avatars:{},
+    customTitle:'', customItems:[], customEditingId:null, modal:null, guessId:null, guessFilter:'', showEliminated:false, guessMode:false, categoryQuery:'', avatars:{},
     boardMarks:new Set(), timeOffset:0, busy:false, lastSignature:'',
     lastEventKey:'', adminSession:null, adminCat:null, adminEdit:null,
     adminNew:{ name:'',image_url:'' }, channel:null, poll:null, clock:null, leaving:false };
@@ -81,6 +81,86 @@
   const isCustomRoom = room => !!room?.theme_name && !room?.theme_id;
   const categoryFor = id => state.categories.find(c=>c.id===id);
   const itemsFor = id => state.items.filter(i=>i.category_id===id);
+  const CUSTOM_STORAGE_KEY = 'qe-custom-themes-v2';
+  function getSavedCustomThemes(){
+    try{
+      const raw = localStorage.getItem(CUSTOM_STORAGE_KEY);
+      if(raw){
+        const list = JSON.parse(raw);
+        if(Array.isArray(list)) return list;
+      }
+    }catch{}
+    try{
+      const old = localStorage.getItem('qe-custom-themes');
+      if(old){
+        const list = JSON.parse(old);
+        if(Array.isArray(list)) return list;
+      }
+    }catch{}
+    return [];
+  }
+  function saveCustomThemeToStorage(theme){
+    try{
+      let list = getSavedCustomThemes().filter(t => t.id !== theme.id && t.name.toLowerCase() !== theme.name.toLowerCase());
+      list.unshift({
+        id: theme.id || `custom-${Date.now()}`,
+        name: theme.name,
+        items: theme.items,
+        updatedAt: Date.now()
+      });
+      if(list.length > 15) list = list.slice(0, 15);
+      localStorage.setItem(CUSTOM_STORAGE_KEY, JSON.stringify(list));
+    }catch(e){
+      console.warn('Erro ao salvar tema no localStorage:', e);
+    }
+  }
+  function deleteCustomThemeFromStorage(id){
+    try{
+      let list = getSavedCustomThemes().filter(t => t.id !== id && t.name !== id);
+      localStorage.setItem(CUSTOM_STORAGE_KEY, JSON.stringify(list));
+    }catch{}
+  }
+  function getAllCustomThemes(){
+    const saved = getSavedCustomThemes();
+    const r = state.room;
+    if(isCustomRoom(r) && r.theme_name){
+      const already = saved.find(t => t.name.trim().toLowerCase() === r.theme_name.trim().toLowerCase());
+      if(already){
+        if(state.customTitle === r.theme_name && state.customItems?.length >= 16){
+          already.items = state.customItems.filter(i => i.name.trim());
+        } else if(r.items?.length >= 16 && (!already.items?.length || already.items.length < 16)){
+          already.items = r.items;
+        }
+      } else {
+        const items = (state.customTitle === r.theme_name && state.customItems?.length)
+          ? state.customItems.filter(i => i.name.trim())
+          : (r.items?.length ? r.items : Array.from({length: r.target_count || 16}, (_, i) => ({name: `Item ${i+1}`, image_url: ''})));
+        saved.unshift({
+          id: 'room-active-custom',
+          name: r.theme_name,
+          items: items,
+          fromRoom: true
+        });
+      }
+    }
+    return saved;
+  }
+  function getPickedCustomTheme(){
+    const all = getAllCustomThemes();
+    if(state.selectedCategory?.startsWith('custom:')){
+      const id = state.selectedCategory.slice(7);
+      return all.find(t => t.id === id || t.name === id) || null;
+    }
+    if(!state.selectedCategory && isCustomRoom(state.room)){
+      return all.find(t => t.name.trim().toLowerCase() === state.room.theme_name.trim().toLowerCase()) || null;
+    }
+    return null;
+  }
+  function resetCustomForm(){
+    state.customEditingId = null;
+    state.customTitle = '';
+    state.customItems = Array.from({length:16},()=>({name:'',image_url:''}));
+  }
   const currentLink = () => { const url = new URL(cfg.siteUrl||location.href); url.search=''; url.hash=''; url.searchParams.set('sala',state.room?.code||state.entryCode||''); return url.toString(); };
   function showToast(text, ok=false) { toastEl.textContent=String(text); toastEl.className='toast show'+(ok?' ok':''); clearTimeout(showToast.t); showToast.t=setTimeout(()=>toastEl.className='toast',3600); }
   function friendlyError(error) { let s=error?.message||String(error||'Erro inesperado'); if (/function public\.qe_|schema cache|Could not find the function/i.test(s)) return 'Funções Quem É?! indisponíveis. Execute a migração v3 e atualize a página.'; if (/Failed to fetch|fetch failed|NetworkError/i.test(s)) return 'Sem conexão com o Supabase. Confira sua internet.'; return s.replace(/^.*?ERROR: /,'').slice(0,230); }
@@ -99,7 +179,7 @@
       start+=1000;
     }
     state.categories=c||[];state.items=list;
-    if(!categoryFor(state.selectedCategory)) {state.selectedCategory=state.categories.find(c=>c.active&&itemsFor(c.id).length>=16)?.id||'';}
+    if(!isCustomRoom(state.room) && !state.selectedCategory?.startsWith('custom:') && !categoryFor(state.selectedCategory)) {state.selectedCategory=state.categories.find(c=>c.active&&itemsFor(c.id).length>=16)?.id||'';}
     if(!state.adminCat)state.adminCat=state.categories[0]?.id||null;
   }
   function persistSession() { if(state.token&&state.code)sessionStorage.setItem(SESSION_KEY,JSON.stringify({token:state.token,code:state.code})); }
@@ -131,7 +211,14 @@
       state.boards=next.boards||{};
       state.boardMarks=marksFor(next.me);
       if(!was || was.code!==next.code || was.theme_id!==next.theme_id || was.theme_name!==next.theme_name){
-        if(isCustomRoom(next)){state.selectedCategory='';state.count=next.target_count||16;}
+        if(isCustomRoom(next)){
+          state.selectedCategory='';
+          state.count=next.target_count||16;
+          if(next.items?.length && (!state.customItems.length || state.customTitle !== next.theme_name)){
+            state.customTitle = next.theme_name;
+            state.customItems = next.items.map(i => ({ name: i.name || '', image_url: i.image_url || '' }));
+          }
+        }
         else if(next.theme_id){state.selectedCategory=next.theme_id;state.count=next.target_count||20;}
       }
       if(!was||was.code!==next.code||was.me!==next.me){loadAvatars();state.activeTab='home';}
@@ -225,26 +312,82 @@
     if(/anim|bicho|pet/.test(n))return 'animals';
     if(/comida|fruta|food/.test(n))return 'food';return 'star';}
   const topicPic=name=>`<img src="assets/cat-${themeIcon(name)}.png" class="theme-pixel-icon" alt="">`;
-  function themeCards(){const q=state.categoryQuery.trim().toLocaleLowerCase('pt-BR');const all=state.categories.filter(c=>c.active&&c.name.toLocaleLowerCase('pt-BR').includes(q));
-    return all.map(c=>{const n=itemsFor(c.id).length;return `<button class="theme-card ${state.selectedCategory===c.id?'selected':''}" data-action="choose-theme" data-id="${c.id}" ${n<16?'disabled':''}>${topicPic(c.name)}<span class="theme-meta"><span class="theme-name">${esc(c.name)}</span><span class="theme-qty">${n} itens</span></span><span class="theme-arrow">${state.selectedCategory===c.id?'✓':'›'}</span></button>`;}).join('')+(!q||'criar tema'.includes(q)?`<button class="theme-card custom ${isCustomRoom(state.room)&&!state.selectedCategory?'selected':''}" data-action="custom-open"><img class="theme-pixel-icon" src="assets/cat-custom.png" alt=""><span class="theme-meta"><span class="theme-name">${isCustomRoom(state.room)?esc(state.room.theme_name):'Criar tema'}</span><span class="theme-qty">${isCustomRoom(state.room)?`${state.room.target_count||0} itens • Personalizado`:'Tema personalizado'}</span></span><span class="theme-arrow">${isCustomRoom(state.room)&&!state.selectedCategory?'✓':'›'}</span></button>`:'') || '<p class="catalog-empty">Nenhum tema encontrado.</p>';}
+  function themeCards(){
+    const q=state.categoryQuery.trim().toLocaleLowerCase('pt-BR');
+    const all=state.categories.filter(c=>c.active&&c.name.toLocaleLowerCase('pt-BR').includes(q));
+    const customList=getAllCustomThemes().filter(t=>t.name.toLocaleLowerCase('pt-BR').includes(q));
+    const showCreate=!q||'criar tema'.includes(q)||'personalizado'.includes(q)||'novo'.includes(q);
+
+    let html = all.map(c=>{
+      const n=itemsFor(c.id).length;
+      return `<button class="theme-card ${state.selectedCategory===c.id?'selected':''}" data-action="choose-theme" data-id="${c.id}" ${n<16?'disabled':''}>${topicPic(c.name)}<span class="theme-meta"><span class="theme-name">${esc(c.name)}</span><span class="theme-qty">${n} itens</span></span><span class="theme-arrow">${state.selectedCategory===c.id?'✓':'›'}</span></button>`;
+    }).join('');
+
+    html += customList.map(t=>{
+      const isRoomTheme = isCustomRoom(state.room) && state.room.theme_name?.toLowerCase() === t.name?.toLowerCase();
+      const isSelected = isRoomTheme ? (!state.selectedCategory || state.selectedCategory === ('custom:'+t.id)) : (state.selectedCategory === ('custom:'+t.id));
+      return `<button class="theme-card custom ${isSelected?'selected':''}" data-action="choose-custom" data-id="${esc(t.id)}">
+        <img class="theme-pixel-icon" src="assets/cat-custom.png" alt="">
+        <span class="theme-meta">
+          <span class="theme-name">${esc(t.name)}</span>
+          <span class="theme-qty">${t.items.length} itens • Personalizado</span>
+        </span>
+        <span class="theme-arrow">${isSelected?'✓':'›'}</span>
+      </button>`;
+    }).join('');
+
+    if(showCreate){
+      html += `<button class="theme-card custom create-card" data-action="custom-open-new">
+        <img class="theme-pixel-icon" src="assets/cat-custom.png" alt="">
+        <span class="theme-meta">
+          <span class="theme-name">+ Criar novo tema</span>
+          <span class="theme-qty">Tema personalizado do zero</span>
+        </span>
+        <span class="theme-arrow">+</span>
+      </button>`;
+    }
+
+    return html || '<p class="catalog-empty">Nenhum tema encontrado.</p>';
+  }
   function renderWaitingPlayer(){
     const r=state.room;
     el.innerHTML=`<div class="room-shell waiting-screen"><main class="wait-center">${brandImage('wait-logo')}<div class="wait-hint"><h1>PREPARANDO<br>A PARTIDA...</h1><p>AGUARDANDO O HOST INICIAR</p></div><div class="wait-players">${(r.players||[]).map((p,i)=>`<div class="wait-player"><div class="wait-portrait ${p.is_me?'avatar-clickable':''}" ${p.is_me?'data-action="avatar-open" role="button" tabindex="0" title="Trocar avatar"':''}>${playerAvatar(p,i)}${p.is_host?hostCrown():''}</div><span>${esc(p.name)}</span></div>`).join('')}</div><div class="wait-loading"><span>CARREGANDO...</span><div class="wait-progress"><i></i></div></div><button class="btn btn-danger wait-leave" data-action="leave-open">↪ SAIR DA SALA</button></main></div>`;
   }
-  function renderLobby(){if(!isHost())return renderWaitingPlayer();const r=state.room;const host=isHost();const picked=categoryFor(state.selectedCategory);const max=picked?itemsFor(picked.id).length:(isCustomRoom(r)?r.target_count||16:16);state.count=Math.max(16,Math.min(max,state.count));
-    const options=[15,30,45,60,90,120,null];const timeControls=options.map(n=>`<button class="time-opt ${n===null?'time-infinite':''} ${r.turn_seconds===n?'selected':''}" data-action="set-time" data-seconds="${n===null?'infinite':n}" title="${n===null?'Sem limite':n+' segundos'}">${n===null?'<img src="assets/pixel-infinity.png" alt=""> TEMPO INFINITO':timerLabel(n)}</button>`).join('');
+  function renderLobby(){
+    if(!isHost())return renderWaitingPlayer();
+    const r=state.room;
+    const host=isHost();
+    const picked=categoryFor(state.selectedCategory);
+    const pickedCustom=getPickedCustomTheme();
+    const max=picked?itemsFor(picked.id).length:(pickedCustom?pickedCustom.items.length:(isCustomRoom(r)?r.target_count||16:16));
+    state.count=Math.max(16,Math.min(max,state.count));
+    const options=[15,30,45,60,90,120,null];
+    const timeControls=options.map(n=>`<button class="time-opt ${n===null?'time-infinite':''} ${r.turn_seconds===n?'selected':''}" data-action="set-time" data-seconds="${n===null?'infinite':n}" title="${n===null?'Sem limite':n+' segundos'}">${n===null?'<img src="assets/pixel-infinity.png" alt=""> TEMPO INFINITO':timerLabel(n)}</button>`).join('');
     el.innerHTML=`<div class="room-shell">${header('',true)}<main class="lobby-scroll"><div class="lobby-wrap"><aside class="lobby-side">
       <div class="panel room-code-panel"><div class="room-code">${esc(r.code)}</div><div class="code-buttons">${iconButton('copy',svgIcon('copy'),'Copiar link')}${iconButton('share',svgIcon('share'),'Compartilhar')}${iconButton('qr-open',svgIcon('qr'),'QR Code')}</div></div>
       <div class="panel"><div class="section-inline"><h2 class="section-title">JOGADORES</h2><span class="sticker">${r.players.length}/12</span></div><div class="players-list">${roomPlayerRows()}</div></div>
       </aside><section class="panel"><div class="theme-header"><h2 class="section-title">${host?'TEMA':'TEMA DA RODADA'}</h2>${host?'<span class="mini-tag">★ HOST</span>':''}</div>
       ${host?`<label class="theme-search-label"><span>⌕</span><input id="theme-search" type="search" placeholder="Pesquisar temas..." value="${esc(state.categoryQuery)}" aria-label="Pesquisar temas"></label><div class="theme-list" id="theme-list">${themeCards()}</div>
-      ${picked?`<div class="choice-controls"><span class="tiny-label">ITENS</span><div class="count-stepper"><button data-action="count-minus" aria-label="Menos itens">−</button><input id="item-count" aria-label="Quantidade de itens" type="number" min="16" max="${max}" value="${state.count}"><button data-action="count-plus" aria-label="Mais itens">+</button></div><button class="btn btn-violet btn-sm" data-action="confirm-theme">✓ ESCOLHER</button></div>`:''}
+      ${picked?`<div class="choice-controls"><span class="tiny-label">ITENS</span><div class="count-stepper"><button data-action="count-minus" aria-label="Menos itens">−</button><input id="item-count" aria-label="Quantidade de itens" type="number" min="16" max="${max}" value="${state.count}"><button data-action="count-plus" aria-label="Mais itens">+</button></div><button class="btn btn-violet btn-sm" data-action="confirm-theme">✓ ESCOLHER</button></div>`:
+        (pickedCustom?`<div class="choice-controls custom-choice-controls">
+          <div class="custom-choice-title">
+            <span class="tiny-label">TEMA PERSONALIZADO</span>
+            <strong>${esc(pickedCustom.name)}</strong> <small>• ${pickedCustom.items.length} itens</small>
+          </div>
+          <div class="custom-choice-actions">
+            <button class="btn btn-yellow btn-sm" data-action="custom-open-edit" data-id="${esc(pickedCustom.id)}">✎ EDITAR</button>
+            ${pickedCustom.fromRoom?'':`<button class="btn btn-ghost btn-sm" data-action="custom-delete-confirm-open" data-id="${esc(pickedCustom.id)}" title="Excluir este tema dos salvos">🗑️</button>`}
+            ${isCustomRoom(r)&&r.theme_name?.toLowerCase()===pickedCustom.name?.toLowerCase()?
+              `<button class="btn btn-primary btn-sm" disabled style="opacity:.9">✓ EM USO</button>`:
+              `<button class="btn btn-violet btn-sm" data-action="confirm-custom" data-id="${esc(pickedCustom.id)}">✓ ESCOLHER</button>`
+            }
+          </div>
+        </div>`:'')}`:
+      `<div class="round-comic-summary"><div class="summary-tile theme-summary"><span class="summary-label">TEMA</span><strong>${r.theme_name?esc(r.theme_name):'AGUARDANDO...'}</strong><span>${r.target_count||'—'} ITENS</span></div><div class="summary-tile time-summary">${flatIcon('clock')}<span class="summary-label">TEMPO</span><strong>${r.turn_seconds===null?'∞':r.turn_seconds+'s'}</strong></div></div>`}
       <div class="time-config"><span class="comic-time-heading"><img class="time-clock-img" src="assets/pixel-clock.png" alt=""><span>TEMPO POR VEZ</span></span><div class="time-options">${timeControls}</div></div>
       <div class="board-edit-option"><span class="board-edit-details"><strong>EDITAR FORA DA VEZ</strong><small>Cada jogador pode marcar seu tabuleiro a qualquer momento</small></span><button type="button" role="switch" aria-checked="${!!r.allow_board_edit_anytime}" aria-label="Permitir editar tabuleiro fora da vez" class="pixel-switch ${r.allow_board_edit_anytime?'on':''}" data-action="set-board-edit"><span class="switch-track"><i></i></span><b>${r.allow_board_edit_anytime?'SIM':'NÃO'}</b></button></div>
       <div class="board-edit-option duplicate-setting"><span class="board-edit-details"><strong>PERMITIR REPETIDOS</strong><small>Dois ou mais jogadores podem receber a mesma identidade</small></span><button type="button" role="switch" aria-checked="${!!r.allow_duplicate_identities}" aria-label="Permitir identidades repetidas entre jogadores" class="pixel-switch ${r.allow_duplicate_identities?'on':''}" data-action="set-repeats"><span class="switch-track"><i></i></span><b>${r.allow_duplicate_identities?'SIM':'NÃO'}</b></button></div>
-      <div class="board-edit-option one-guess-setting"><span class="board-edit-details"><strong>SOMENTE UM CHUTE</strong><small>Se errar, o jogador é eliminado da disputa, mas permanece na sala para acompanhar.</small></span><button type="button" role="switch" aria-checked="${!!r.one_guess_only}" aria-label="Ativar somente um chute por jogador" class="pixel-switch ${r.one_guess_only?'on':''}" data-action="set-one-guess"><span class="switch-track"><i></i></span><b>${r.one_guess_only?'SIM':'NÃO'}</b></button></div>`:
-      `<div class="round-comic-summary"><div class="summary-tile theme-summary"><span class="summary-label">TEMA</span><strong>${r.theme_name?esc(r.theme_name):'AGUARDANDO...'}</strong><span>${r.target_count||'—'} ITENS</span></div><div class="summary-tile time-summary">${flatIcon('clock')}<span class="summary-label">TEMPO</span><strong>${r.turn_seconds===null?'∞':r.turn_seconds+'s'}</strong></div></div>`}
-      
+      <div class="board-edit-option one-guess-setting"><span class="board-edit-details"><strong>SOMENTE UM CHUTE</strong><small>Se errar, o jogador é eliminado da disputa, mas permanece na sala para acompanhar.</small></span><button type="button" role="switch" aria-checked="${!!r.one_guess_only}" aria-label="Ativar somente um chute por jogador" class="pixel-switch ${r.one_guess_only?'on':''}" data-action="set-one-guess"><span class="switch-track"><i></i></span><b>${r.one_guess_only?'SIM':'NÃO'}</b></button></div>
       </section></div></main><footer class="lobby-bottom">${host?`<button class="btn btn-primary" data-action="start" ${!r.theme_name||r.players.length<2?'disabled':''}>▶ JOGAR</button>`:'<span class="sticker">⏳ AGUARDANDO</span>'}</footer></div>`;
   }
   function playerChips(){return state.room.players.map((p,i)=>`<div class="p-chip ${p.id===state.room.turn_player_id?'active':''} ${p.is_me?'me':''} ${p.rank?'ranked':''}" title="${esc(p.name)}"><span class="avatar">${playerAvatar(p,i)}</span><div class="p-info"><div class="p-name">${esc(p.name)}${p.is_me?' •':''}${p.is_host?' ★':''}</div><div class="p-identity">${p.rank?`${rankLabel(p.rank)} · `:''}${p.is_me&&!p.rank?'???':esc(p.identity?.name||'?')}</div></div></div>`).join('');}
@@ -342,7 +485,38 @@
     }
     if(m.type==='avatar-picker'){html=modalMarkup('ESCOLHA SEU AVATAR',`<div class="avatar-picker">${Array.from({length:14},(_,i)=>`<button class="avatar-pick ${avatarIndex(me(),0)===i?'selected':''}" data-action="avatar-choose" data-index="${i}" aria-label="Avatar ${i+1}">${avatarSprite(i)}${avatarIndex(me(),0)===i?'<span>✓</span>':''}</button>`).join('')}</div><p class="subcopy avatar-note">Você pode usar o mesmo avatar de outro jogador.</p>`,`<button class="btn btn-ghost" data-action="modal-close">VOLTAR</button>`);}
     if(m.type==='admin-delete'){html=modalMarkup('EXCLUIR?',`<p>${esc(m.label)}</p>`,`<button class="btn btn-ghost" data-action="modal-close">CANCELAR</button><button class="btn btn-primary" data-action="admin-delete-confirm">EXCLUIR</button>`);}
-    if(m.type==='custom'){initialCustom();html=modalMarkup('✨ CRIE SEU TEMA!',`<div class="notice">Somente para esta partida. Imagens são reduzidas no seu aparelho e ficam temporariamente na sala.</div><div class="field" style="margin-top:13px"><label>NOME DO SEU TEMA</label><input class="text-input" id="custom-title" placeholder="Ex: Personagens do nosso grupo" maxlength="65" value="${esc(state.customTitle)}"></div><div class="field"><label>ADICIONAR VÁRIOS ITENS DE UMA VEZ (UM POR LINHA)</label><textarea class="text-input" id="custom-bulk" placeholder="Mario\nLuigi\nPeach\nYoshi..."></textarea><button class="btn btn-sm btn-cyan" style="align-self:start" data-action="custom-bulk-add">+ ADICIONAR ESSAS LINHAS</button></div><p class="tiny-label">ITENS DO TEMA <span id="custom-count">${state.customItems.length}</span> • MÍNIMO 16</p><div class="custom-grid" id="custom-grid">${customItemsHtml()}</div><div class="custom-options"><button class="btn btn-sm btn-yellow" data-action="custom-add">+ ITEM</button><button class="btn btn-sm" data-action="custom-add-8">+ 8 ITENS</button></div>`,`<button class="btn btn-ghost" data-action="modal-close">CANCELAR</button><button class="btn btn-primary" data-action="custom-save">✓ USAR TEMA</button>`,true);}
+    if(m.type==='delete-custom-confirm'){
+      const theme = getAllCustomThemes().find(t => t.id === m.id);
+      html=modalMarkup('EXCLUIR TEMA SALVO?',`<p>Deseja remover o tema <strong>${esc(theme?.name||'este tema')}</strong> dos seus temas salvos?</p><p class="subcopy" style="margin-top:8px">Ele não aparecerá mais na lista deste navegador.</p>`,`<button class="btn btn-ghost" data-action="modal-close">CANCELAR</button><button class="btn btn-danger" data-action="custom-delete-confirmed" data-id="${esc(m.id)}">EXCLUIR</button>`);
+    }
+    if(m.type==='custom'){
+      initialCustom();
+      const modalTitle = m.mode==='edit' ? '✏️ EDITAR TEMA' : '✨ CRIAR NOVO TEMA';
+      html=modalMarkup(modalTitle,`
+        <div class="notice">Personalize o tema com nomes e fotos. Imagens são reduzidas no seu aparelho e ficam salvas nas partidas.</div>
+        <div class="field" style="margin-top:13px">
+          <label>NOME DO SEU TEMA</label>
+          <input class="text-input" id="custom-title" placeholder="Ex: Personagens do nosso grupo" maxlength="65" value="${esc(state.customTitle)}">
+        </div>
+        <div class="field">
+          <label>ADICIONAR EM LOTE (UM POR LINHA)</label>
+          <textarea class="text-input" id="custom-bulk" placeholder="Mario\nLuigi\nPeach\nYoshi..."></textarea>
+          <div class="bulk-buttons">
+            <button class="btn btn-sm btn-cyan" data-action="custom-bulk-add">+ ADICIONAR LINHAS</button>
+            <button class="btn btn-sm btn-yellow" data-action="custom-bulk-replace" title="Substitui a lista atual pelas linhas acima">🔄 SUBSTITUIR TUDO</button>
+          </div>
+        </div>
+        <div class="custom-status-row" id="custom-status-row">${customStatusBadge()}</div>
+        <div class="custom-grid" id="custom-grid">${customItemsHtml()}</div>
+        <div class="custom-options">
+          <button class="btn btn-sm btn-yellow" data-action="custom-add">+ ITEM</button>
+          <button class="btn btn-sm" data-action="custom-add-8">+ 8 ITENS</button>
+          <button class="btn btn-sm btn-ghost" data-action="custom-clear-all" title="Limpar todos os itens e recomeçar do zero">🗑️ LIMPAR TUDO</button>
+        </div>`,
+        `<button class="btn btn-ghost" data-action="modal-close">CANCELAR</button><button class="btn btn-primary" data-action="custom-save">✓ USAR TEMA</button>`,
+        true
+      );
+    }
     if(m.type==='admin-cat'){const c=state.categories.find(x=>x.id===m.id);html=modalMarkup(c?'EDITAR TEMA':'NOVO TEMA',`<div class="field"><label>NOME</label><input id="cat-name" class="text-input" maxlength="65" value="${esc(c?.name||'')}"></div><div class="field"><label>EMOJI</label><input id="cat-emoji" class="text-input" maxlength="6" value="${esc(c?.emoji||'💥')}"></div><div class="field"><label>COR DO CARD</label><input id="cat-color" type="color" value="${safeColor(c?.color)}" style="width:100%;height:48px;border:0;border-radius:16px"></div><label style="display:flex;gap:7px;align-items:center;font-weight:800"><input id="cat-active" type="checkbox" ${c?.active!==false?'checked':''}> Disponível para os jogadores</label>`,`<button class="btn btn-ghost" data-action="modal-close">CANCELAR</button><button class="btn btn-primary" data-action="admin-save-cat">SALVAR</button>`);}
     if(m.type==='admin-item'){const item=state.items.find(i=>i.id===m.id);html=modalMarkup('EDITAR ITEM',`<div class="field"><label>NOME</label><input class="text-input" id="edit-item-name" maxlength="90" value="${esc(item?.name||'')}"></div><div class="field"><label>URL DA IMAGEM (R2 OU HTTPS)</label><input class="text-input" id="edit-item-image" value="${esc(item?.image_url||'')}"></div><label class="btn btn-cyan" style="position:relative">⬆ ENVIAR NOVA IMAGEM<input type="file" id="admin-image-edit-file" accept="image/png,image/jpeg,image/webp" style="position:absolute;inset:0;opacity:0;width:100%;cursor:pointer"></label>`,`<button class="btn btn-ghost" data-action="modal-close">CANCELAR</button><button class="btn btn-primary" data-action="admin-save-item">SALVAR</button>`);}
     document.body.insertAdjacentHTML('beforeend',html);
@@ -351,8 +525,31 @@
   }
   function guessOptions(){const term=state.guessFilter.trim().toLocaleLowerCase('pt-BR');return (state.room?.items||[]).filter(i=>(state.showEliminated||!state.boardMarks.has(i.id))&&i.name.toLocaleLowerCase('pt-BR').includes(term)).map(i=>`<button class="guess-opt ${state.guessId===i.id?'selected':''}" data-action="guess-select" data-id="${i.id}"><span class="guess-thumb">${imgHtml(i.image_url,i.name)||'❔'}</span><span>${esc(i.name)}</span></button>`).join('')||'<p>Nenhum item encontrado. Experimente mostrar os eliminados.</p>';}
   function refreshGuess(){const opts=document.getElementById('guess-list');if(opts)opts.innerHTML=guessOptions();const btn=document.querySelector('[data-action="guess-confirm"]');if(btn)btn.disabled=!state.guessId;}
-  function customItemsHtml(){return state.customItems.map((i,n)=>`<div class="custom-item"><span class="custom-num">${n+1}</span><input class="text-input custom-name" data-idx="${n}" maxlength="90" placeholder="Nome do item" value="${esc(i.name)}"><label class="img-picker" title="Adicionar imagem">${imgHtml(i.image_url,i.name)||'📷'}<input type="file" accept="image/jpeg,image/png,image/webp" class="custom-image" data-idx="${n}" aria-label="Imagem do item ${n+1}"></label><button class="del-item" data-action="custom-delete" data-idx="${n}" aria-label="Excluir item">×</button></div>`).join('');}
-  function updateCustomGrid(){const grid=document.getElementById('custom-grid');if(grid)grid.innerHTML=customItemsHtml();const count=document.getElementById('custom-count');if(count)count.textContent=state.customItems.length;}
+  function getCustomStats(){
+    const filled = (state.customItems||[]).filter(i=>i.name.trim()).length;
+    const total = state.customItems?.length || 0;
+    return { filled, total, ready: filled>=16 };
+  }
+  function customStatusBadge(){
+    const { filled, ready } = getCustomStats();
+    if(ready){
+      return `<span class="custom-badge badge-ready">✓ ${filled} itens preenchidos (mínimo de 16 atingido!)</span>`;
+    }
+    const missing = 16 - filled;
+    return `<span class="custom-badge badge-need">⚠️ ${filled} de 16 itens preenchidos (faltam ${missing})</span>`;
+  }
+  function customItemsHtml(){
+    if(!state.customItems.length){
+      return `<div class="custom-empty-msg">Nenhum item na lista ainda.<br><small>Cole uma lista acima ou clique em <strong>+ ITEM</strong> abaixo.</small></div>`;
+    }
+    return state.customItems.map((i,n)=>`<div class="custom-item"><span class="custom-num">${n+1}</span><input class="text-input custom-name" data-idx="${n}" maxlength="90" placeholder="Nome do item ${n+1}" value="${esc(i.name)}"><label class="img-picker" title="Adicionar imagem">${imgHtml(i.image_url,i.name)||'📷'}<input type="file" accept="image/jpeg,image/png,image/webp" class="custom-image" data-idx="${n}" aria-label="Imagem do item ${n+1}"></label><button class="del-item" data-action="custom-delete" data-idx="${n}" title="Excluir item" aria-label="Excluir item">×</button></div>`).join('');
+  }
+  function updateCustomGrid(){
+    const grid=document.getElementById('custom-grid');
+    if(grid)grid.innerHTML=customItemsHtml();
+    const statusRow=document.getElementById('custom-status-row');
+    if(statusRow)statusRow.innerHTML=customStatusBadge();
+  }
   async function compressImage(file){
     if(!/^image\/(png|jpeg|webp)$/.test(file.type))throw Error('Use PNG, JPEG ou WebP.');
     if(file.size>8*1024*1024)throw Error('Arquivo muito grande: máximo de 8 MB de origem.');
@@ -407,12 +604,159 @@
     if(type==='set-repeats')return await doAction('set_repeats',{enabled:!state.room.allow_duplicate_identities});
     if(type==='set-one-guess')return await doAction('set_one_guess',{enabled:!state.room.one_guess_only});
     if(type.startsWith('tab-')){if(state.room?.status!=='playing')return;state.activeTab=type==='tab-players'?'players':type==='tab-mine'?'mine':'home';state.guessMode=false;state.guessId=null;renderGame();return;}
-    if(type==='custom-open'){state.modal={type:'custom'};initialCustom();return renderModal();}
-    if(type==='custom-add'){state.customItems.push({name:'',image_url:''});return updateCustomGrid();}
-    if(type==='custom-add-8'){state.customItems.push(...Array.from({length:8},()=>({name:'',image_url:''})));return updateCustomGrid();}
-    if(type==='custom-delete'){if(state.customItems.length<=16)return showToast('O mínimo é 16 opções.');state.customItems.splice(Number(button.dataset.idx),1);return updateCustomGrid();}
-    if(type==='custom-bulk-add'){const txt=document.getElementById('custom-bulk')?.value||'';const lines=txt.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);if(!lines.length)return showToast('Cole pelo menos um item.');let inserted=0;for(const line of lines){const blank=state.customItems.find(i=>!i.name.trim()&&!i.image_url);if(blank)blank.name=line.slice(0,90);else state.customItems.push({name:line.slice(0,90),image_url:''});inserted++;}document.getElementById('custom-bulk').value='';updateCustomGrid();return showToast(`${inserted} itens adicionados!`,true);}
-    if(type==='custom-save'){const name=(document.getElementById('custom-title')?.value||'').trim();state.customTitle=name;const items=state.customItems.filter(i=>i.name.trim()).map(i=>({name:i.name.trim(),image_url:i.image_url||''}));if(name.length<2)return showToast('Dê um nome ao tema.');if(items.length<16)return showToast('Preencha ao menos 16 itens com nomes.');if(new Set(items.map(x=>x.name.toLocaleLowerCase())).size!==items.length)return showToast('Remova nomes repetidos.');await safeCall(async()=>{await act('set_custom',{name,items});state.selectedCategory='';state.count=items.length;state.modal=null;document.getElementById('overlay')?.remove();render();showToast('Seu tema está pronto para jogar!',true);});return;}
+    if(type==='choose-custom'){state.selectedCategory='custom:'+id;render();return;}
+    if(type==='confirm-custom'){
+      const theme=getAllCustomThemes().find(t=>t.id===id||t.name===id);
+      if(!theme)return showToast('Tema não encontrado.');
+      await safeCall(async()=>{
+        await act('set_custom',{name:theme.name,items:theme.items});
+        state.selectedCategory='';
+        state.count=theme.items.length;
+        render();
+        showToast(`Tema "${theme.name}" escolhido para a partida!`,true);
+      });
+      return;
+    }
+    if(type==='custom-open'){
+      if(isCustomRoom(state.room) && state.room.theme_name){
+        const currentCustom = getAllCustomThemes().find(t => t.name.toLowerCase() === state.room.theme_name.toLowerCase());
+        if(currentCustom){
+          state.customEditingId = currentCustom.id;
+          state.customTitle = currentCustom.name;
+          state.customItems = (currentCustom.items || []).map(i => ({ name: i.name || '', image_url: i.image_url || '' }));
+          while(state.customItems.length < 16) state.customItems.push({ name: '', image_url: '' });
+          state.modal = { type: 'custom', mode: 'edit' };
+          return renderModal();
+        }
+      }
+      resetCustomForm();
+      state.modal = { type: 'custom', mode: 'create' };
+      return renderModal();
+    }
+    if(type==='custom-open-new'){
+      resetCustomForm();
+      state.modal = { type: 'custom', mode: 'create' };
+      return renderModal();
+    }
+    if(type==='custom-open-edit'){
+      const targetId = button.dataset.id;
+      const theme = getAllCustomThemes().find(t => t.id === targetId || t.name === targetId);
+      if(theme){
+        state.customEditingId = theme.id;
+        state.customTitle = theme.name;
+        state.customItems = (theme.items || []).map(i => ({ name: i.name || '', image_url: i.image_url || '' }));
+        while(state.customItems.length < 16) state.customItems.push({ name: '', image_url: '' });
+      }
+      state.modal = { type: 'custom', mode: 'edit' };
+      return renderModal();
+    }
+    if(type==='custom-delete-confirm-open'){
+      state.modal = { type: 'delete-custom-confirm', id: button.dataset.id };
+      return renderModal();
+    }
+    if(type==='custom-delete-confirmed'){
+      const targetId = button.dataset.id;
+      deleteCustomThemeFromStorage(targetId);
+      if(state.selectedCategory === 'custom:' + targetId){
+        state.selectedCategory = '';
+      }
+      state.modal = null;
+      document.getElementById('overlay')?.remove();
+      render();
+      showToast('Tema excluído dos salvos.', true);
+      return;
+    }
+    if(type==='custom-clear-all'){
+      state.customEditingId = null;
+      state.customTitle = '';
+      state.customItems = Array.from({length:16},()=>({name:'',image_url:''}));
+      const titleInput = document.getElementById('custom-title');
+      if(titleInput) titleInput.value = '';
+      const bulkInput = document.getElementById('custom-bulk');
+      if(bulkInput) bulkInput.value = '';
+      const modalTitleEl = document.querySelector('#overlay .bubble-title');
+      if(modalTitleEl) modalTitleEl.textContent = '✨ CRIAR NOVO TEMA';
+      updateCustomGrid();
+      showToast('Formulário limpo para um novo tema!', true);
+      return;
+    }
+    if(type==='custom-add'){
+      state.customItems.push({name:'',image_url:''});
+      updateCustomGrid();
+      const inputs = document.querySelectorAll('#custom-grid .custom-name');
+      if(inputs.length) inputs[inputs.length - 1].focus();
+      return;
+    }
+    if(type==='custom-add-8'){
+      state.customItems.push(...Array.from({length:8},()=>({name:'',image_url:''})));
+      return updateCustomGrid();
+    }
+    if(type==='custom-delete'){
+      const idx = Number(button.dataset.idx);
+      if(Number.isInteger(idx) && idx >= 0 && idx < state.customItems.length){
+        state.customItems.splice(idx, 1);
+        updateCustomGrid();
+      }
+      return;
+    }
+    if(type==='custom-bulk-add'){
+      const txt = document.getElementById('custom-bulk')?.value || '';
+      const lines = txt.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+      if(!lines.length) return showToast('Cole pelo menos um item.');
+      let inserted = 0;
+      for(const line of lines){
+        const blank = state.customItems.find(i=>!i.name.trim() && !i.image_url);
+        if(blank) blank.name = line.slice(0, 90);
+        else state.customItems.push({ name: line.slice(0, 90), image_url: '' });
+        inserted++;
+      }
+      document.getElementById('custom-bulk').value = '';
+      updateCustomGrid();
+      return showToast(`${inserted} itens adicionados!`, true);
+    }
+    if(type==='custom-bulk-replace'){
+      const txt = document.getElementById('custom-bulk')?.value || '';
+      const lines = txt.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+      if(!lines.length) return showToast('Cole pelo menos um item.');
+      state.customItems = lines.map(line => ({ name: line.slice(0, 90), image_url: '' }));
+      while(state.customItems.length < 16){
+        state.customItems.push({ name: '', image_url: '' });
+      }
+      document.getElementById('custom-bulk').value = '';
+      updateCustomGrid();
+      return showToast(`Lista substituída por ${lines.length} itens!`, true);
+    }
+    if(type==='custom-save'){
+      const name=(document.getElementById('custom-title')?.value||'').trim();
+      state.customTitle=name;
+      const items=state.customItems.filter(i=>i.name.trim()).map(i=>({name:i.name.trim(),image_url:i.image_url||''}));
+      if(name.length<2)return showToast('Dê um nome ao seu tema.');
+      if(items.length<16)return showToast(`Preencha pelo menos 16 itens com nomes (atualmente ${items.length} de 16).`);
+      const seen = new Set();
+      const duplicates = [];
+      for(const it of items){
+        const k = it.name.toLocaleLowerCase('pt-BR');
+        if(seen.has(k)) duplicates.push(it.name);
+        seen.add(k);
+      }
+      if(duplicates.length)return showToast(`Remova nomes repetidos: ${duplicates.slice(0,3).join(', ')}`);
+      await safeCall(async()=>{
+        await act('set_custom',{name,items});
+        saveCustomThemeToStorage({
+          id: state.customEditingId || `custom-${Date.now()}`,
+          name,
+          items
+        });
+        state.customEditingId=null;
+        state.selectedCategory='';
+        state.count=items.length;
+        state.modal=null;
+        document.getElementById('overlay')?.remove();
+        render();
+        showToast('Tema personalizado salvo e pronto para jogar!',true);
+      });
+      return;
+    }
     if(type==='mark'){
       if(!canEditVisibleBoard())return showToast('Tabuleiro bloqueado nesta vez.');
       if(!state.room?.items.some(item=>item.id===id))return;
@@ -481,7 +825,12 @@
     if(t.id==='join-code')state.entryCode=t.value.toUpperCase();
     if(t.id==='item-count'){const max=itemsFor(state.selectedCategory).length;state.count=Math.max(16,Math.min(max,Number(t.value)||16));}
     if(t.id==='custom-title')state.customTitle=t.value;
-    if(t.classList.contains('custom-name'))state.customItems[Number(t.dataset.idx)].name=t.value;
+    if(t.classList.contains('custom-name')){
+      const idx=Number(t.dataset.idx);
+      if(state.customItems[idx])state.customItems[idx].name=t.value;
+      const statusRow=document.getElementById('custom-status-row');
+      if(statusRow)statusRow.innerHTML=customStatusBadge();
+    }
     if(t.id==='guess-search'){state.guessFilter=t.value;refreshGuess();}
   });
   document.addEventListener('change',async event=>{

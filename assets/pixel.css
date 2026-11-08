@@ -494,3 +494,25 @@ button:focus-visible,input:focus-visible{outline:2px solid #6bfaff;outline-offse
 .result-elim-label{display:block;margin-top:5px;color:#ff8faf;font:700 clamp(9px,2.4vw,11px)/1.2 var(--pixel,'Courier New',monospace)}
 .result-row.result-eliminated .result-person{color:#e9bccc!important}
 @media(max-width:350px){.players-tab-eliminated{font-size:8px;max-width:78px;padding:3px}.eliminated-notice{font-size:9px}}
+
+/* Custom themes improvements: creation, list and editor */
+.theme-card.create-card{background:#0e1e47!important;border:1px dashed #6f58db!important}
+.theme-card.create-card:hover{background:#152b61!important}
+.theme-card.create-card .theme-name{color:#ffd966}
+.theme-card.create-card .theme-arrow{font-size:22px;font-weight:900;color:#ffe600}
+.custom-choice-controls{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:10px 0;padding:12px 0 5px;border-top:1px solid #48459d}
+.custom-choice-title{display:flex;flex-direction:column;gap:2px}
+.custom-choice-title strong{font:700 15px var(--pixel);color:#fff}
+.custom-choice-title small{color:#a5a6ee;font:700 11px var(--pixel)}
+.custom-choice-actions{display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap}
+.custom-status-row{margin:10px 0 6px;display:flex;align-items:center}
+.custom-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;font:700 12px var(--pixel,sans-serif);border-radius:4px;letter-spacing:.02em}
+.badge-need{background:#3d1424;color:#ff85a1;border:1px solid #732644}
+.badge-ready{background:#0f3820;color:#55f89e;border:1px solid #1c683c}
+.bulk-buttons{display:flex;gap:8px;flex-wrap:wrap;margin-top:7px}
+.custom-options{display:flex;gap:7px;margin-top:12px;flex-wrap:wrap}
+.custom-empty-msg{padding:18px 10px;text-align:center;color:#a5a6ee;font:700 13px var(--pixel,sans-serif);background:#10153f;border:1px dashed #4b4594;margin-top:12px}
+.del-item{cursor:pointer;display:grid;place-items:center;transition:background .14s,transform .1s}
+.del-item:hover{background:#ff4b86;color:#fff}
+.del-item:active{transform:scale(.92)}
+
