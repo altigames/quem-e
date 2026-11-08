@@ -87,6 +87,9 @@
     {
       id: 'super-heroes',
       name: 'Super-Heróis & Vilões',
+      keywords: 'marvel dc herois viloes quadrinhos comics batman superman vingadores',
+      badge: 'Tema Especial 🦸',
+      icon: 'assets/cat-star.png',
       isPreset: true,
       items: [
         'Homem-Aranha', 'Batman', 'Coringa', 'Homem de Ferro', 'Thanos',
@@ -98,6 +101,60 @@
         'Bane', 'Soldado Invernal', 'Lanterna Verde', 'Homem-Formiga', 'Ultron',
         'Groot', 'Mulher-Gato', 'Senhor das Estrelas', 'Demolidor', 'Lex Luthor',
         'Capitã Marvel', 'Espantalho', 'Noturno', 'Galactus'
+      ].map(name => ({ name, image_url: '' }))
+    },
+    {
+      id: 'coisas-da-casa',
+      name: 'Coisas da Casa & Objetos',
+      keywords: 'objetos coisas casa quarto cozinha moveis cotidiano utensilios banheiro sala',
+      badge: 'Tema Especial 🛋️',
+      icon: 'assets/cat-custom.png',
+      isPreset: true,
+      items: [
+        'Geladeira', 'Fogão', 'Micro-ondas', 'Televisão', 'Celular',
+        'Computador', 'Sofá', 'Cama', 'Privada', 'Chuveiro',
+        'Escova de Dentes', 'Travesseiro', 'Espelho', 'Chinelo', 'Guarda-chuva',
+        'Secador de Cabelo', 'Ventilador', 'Ferro de Passar', 'Máquina de Lavar', 'Vassoura',
+        'Balde', 'Panela', 'Prato', 'Copo', 'Garfo',
+        'Faca', 'Caneca', 'Toalha de Banho', 'Tesoura', 'Caneta',
+        'Caderno', 'Mochila', 'Chave', 'Lâmpada', 'Relógio de Parede',
+        'Tênis', 'Abajur', 'Tapete', 'Caixa de Som', 'Garrafa de Água'
+      ].map(name => ({ name, image_url: '' }))
+    },
+    {
+      id: 'marcas-famosas',
+      name: 'Marcas Famosas & Logos',
+      keywords: 'marcas logos empresas produtos marcas famosas marcas e logos marcas logos lojas',
+      badge: 'Tema Especial 🏷️',
+      icon: 'assets/cat-star.png',
+      isPreset: true,
+      items: [
+        'Coca-Cola', "McDonald's", 'Apple', 'Nike', 'Adidas',
+        'Disney', 'Netflix', 'Google', 'Ferrari', 'Starbucks',
+        'Burger King', 'Pepsi', 'Nestlé', 'Havaianas', 'Lego',
+        'Red Bull', 'Spotify', 'YouTube', 'WhatsApp', 'Instagram',
+        'Ford', 'Chevrolet', 'Mercedes-Benz', 'BMW', 'PlayStation',
+        'Xbox', 'Nintendo', 'Barbie', 'Gucci', 'Lacoste',
+        'Nubank', 'Amazon', 'Samsung', 'Doritos', 'Heineken',
+        'Subway', 'Dove', 'Danone', 'Skol', 'Puma'
+      ].map(name => ({ name, image_url: '' }))
+    },
+    {
+      id: 'lugares-famosos',
+      name: 'Lugares',
+      keywords: 'lugares maravilhas turismo pontos turisticos cidades paises monumentos viagens',
+      badge: 'Tema Especial 🌍',
+      icon: 'assets/cat-places.png',
+      isPreset: true,
+      items: [
+        'Cristo Redentor', 'Torre Eiffel', 'Estátua da Liberdade', 'Pirâmides do Egito', 'Coliseu de Roma',
+        'Grande Muralha da China', 'Torre de Pisa', 'Big Ben', 'Taj Mahal', 'Machu Picchu',
+        'Cataratas do Iguaçu', 'Pão de Açúcar', 'Disney World', 'Times Square', 'Grand Canyon',
+        'Monte Everest', 'Monte Fuji', 'Museu do Louvre', 'Cataratas do Niágara', 'Ilha de Páscoa',
+        'Letreiro de Hollywood', 'Vaticano', 'Central Park', 'Praia de Copacabana', 'Floresta Amazônica',
+        'Fernando de Noronha', 'Lençóis Maranhenses', 'Pelourinho', 'Catedral de Notre-Dame', 'Arco do Triunfo',
+        'Ópera de Sydney', 'Stonehenge', 'Monte Rushmore', 'Ponte Golden Gate', 'Casa Branca',
+        'Acrópole de Atenas', 'Las Vegas Strip', 'Palácio de Versalhes', 'Deserto do Saara', 'Muralha de Berlim'
       ].map(name => ({ name, image_url: '' }))
     }
   ];
@@ -140,13 +197,8 @@
     }catch{}
   }
   function getAllCustomThemes(){
-    const saved = getSavedCustomThemes();
-    for(const preset of PRESET_THEMES){
-      const exists = saved.find(t => t.id === preset.id || t.name.toLowerCase() === preset.name.toLowerCase());
-      if(!exists){
-        saved.push({ ...preset, items: [...preset.items] });
-      }
-    }
+    const userSaved = getSavedCustomThemes().filter(t => !t.isPreset && !PRESET_THEMES.some(p => p.id === t.id || p.name.toLowerCase() === t.name.toLowerCase()));
+    const saved = PRESET_THEMES.map(p => ({ ...p, items: [...p.items] })).concat(userSaved);
     const r = state.room;
     if(isCustomRoom(r) && r.theme_name){
       const already = saved.find(t => t.name.trim().toLowerCase() === r.theme_name.trim().toLowerCase());
@@ -203,7 +255,7 @@
       if((rows||[]).length<1000)break;
       start+=1000;
     }
-    state.categories=c||[];state.items=list;
+    state.categories=(c||[]).filter(cat => cat.name.trim().toLowerCase() !== 'lugares');state.items=list;
     if(!isCustomRoom(state.room) && !state.selectedCategory?.startsWith('custom:') && !categoryFor(state.selectedCategory)) {state.selectedCategory=state.categories.find(c=>c.active&&itemsFor(c.id).length>=16)?.id||'';}
     if(!state.adminCat)state.adminCat=state.categories[0]?.id||null;
   }
@@ -340,7 +392,11 @@
   function themeCards(){
     const q=state.categoryQuery.trim().toLocaleLowerCase('pt-BR');
     const all=state.categories.filter(c=>c.active&&c.name.toLocaleLowerCase('pt-BR').includes(q));
-    const customList=getAllCustomThemes().filter(t=>t.name.toLocaleLowerCase('pt-BR').includes(q));
+    const customList=getAllCustomThemes().filter(t=>{
+      const matchName = t.name.toLocaleLowerCase('pt-BR').includes(q);
+      const matchKeywords = t.keywords && t.keywords.toLocaleLowerCase('pt-BR').includes(q);
+      return matchName || matchKeywords;
+    });
     const showCreate=!q||'criar tema'.includes(q)||'personalizado'.includes(q)||'novo'.includes(q);
 
     let html = '';
@@ -362,11 +418,13 @@
       const isRoomTheme = isCustomRoom(state.room) && state.room.theme_name?.toLowerCase() === t.name?.toLowerCase();
       const isSelected = isRoomTheme ? (!state.selectedCategory || state.selectedCategory === ('custom:'+t.id)) : (state.selectedCategory === ('custom:'+t.id));
       const isPreset = !!t.isPreset;
+      const iconSrc = t.icon || (isPreset ? 'assets/cat-star.png' : 'assets/cat-custom.png');
+      const badgeText = t.badge || (isPreset ? 'Tema Especial' : 'Personalizado');
       return `<button class="theme-card custom ${isPreset?'preset-card':''} ${isSelected?'selected':''}" data-action="choose-custom" data-id="${esc(t.id)}">
-        <img class="theme-pixel-icon" src="${isPreset?'assets/cat-star.png':'assets/cat-custom.png'}" alt="">
+        <img class="theme-pixel-icon" src="${esc(iconSrc)}" alt="">
         <span class="theme-meta">
           <span class="theme-name">${esc(t.name)}</span>
-          <span class="theme-qty">${t.items.length} itens • ${isPreset?'Tema Especial 🦸':'Personalizado'}</span>
+          <span class="theme-qty">${t.items.length} itens • ${esc(badgeText)}</span>
         </span>
         <span class="theme-arrow">${isSelected?'✓':'›'}</span>
       </button>`;
@@ -738,12 +796,12 @@
       const targetId = button.dataset.id;
       const theme = getAllCustomThemes().find(t => t.id === targetId || t.name === targetId);
       if(theme){
-        state.customEditingId = theme.id;
-        state.customTitle = theme.name;
+        state.customEditingId = theme.isPreset ? null : theme.id;
+        state.customTitle = theme.isPreset ? `${theme.name} (Cópia)` : theme.name;
         state.customItems = (theme.items || []).map(i => ({ name: i.name || '', image_url: i.image_url || '' }));
         while(state.customItems.length < 16) state.customItems.push({ name: '', image_url: '' });
       }
-      state.modal = { type: 'custom', mode: 'edit' };
+      state.modal = { type: 'custom', mode: theme?.isPreset ? 'create' : 'edit' };
       return renderModal();
     }
     if(type==='custom-delete-confirm-open'){
