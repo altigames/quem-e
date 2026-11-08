@@ -1,4 +1,4 @@
-/* QUEM É?! v11.4 — temas personalizados flexiveis, criacao ilimitada e edicao sem bloqueio */
+/* QUEM É?! v11.5 — UX aprimorada para criação e troca de temas pós-jogo */
 (() => {
   'use strict';
   const cfg = window.QE_CONFIG || {};
@@ -126,7 +126,7 @@
     if(isCustomRoom(r) && r.theme_name){
       const already = saved.find(t => t.name.trim().toLowerCase() === r.theme_name.trim().toLowerCase());
       if(already){
-        if(state.customTitle === r.theme_name && state.customItems?.length >= 16){
+        if(state.customTitle === r.theme_name && state.customItems?.filter(i => i.name.trim()).length >= 16){
           already.items = state.customItems.filter(i => i.name.trim());
         } else if(r.items?.length >= 16 && (!already.items?.length || already.items.length < 16)){
           already.items = r.items;
@@ -318,11 +318,21 @@
     const customList=getAllCustomThemes().filter(t=>t.name.toLocaleLowerCase('pt-BR').includes(q));
     const showCreate=!q||'criar tema'.includes(q)||'personalizado'.includes(q)||'novo'.includes(q);
 
-    let html = all.map(c=>{
-      const n=itemsFor(c.id).length;
-      return `<button class="theme-card ${state.selectedCategory===c.id?'selected':''}" data-action="choose-theme" data-id="${c.id}" ${n<16?'disabled':''}>${topicPic(c.name)}<span class="theme-meta"><span class="theme-name">${esc(c.name)}</span><span class="theme-qty">${n} itens</span></span><span class="theme-arrow">${state.selectedCategory===c.id?'✓':'›'}</span></button>`;
-    }).join('');
+    let html = '';
 
+    // 1. Botão de Criar Novo Tema no topo para acesso imediato
+    if(showCreate){
+      html += `<button class="theme-card custom create-card" data-action="custom-open-new">
+        <img class="theme-pixel-icon" src="assets/cat-custom.png" alt="">
+        <span class="theme-meta">
+          <span class="theme-name">✨ + Criar novo tema</span>
+          <span class="theme-qty">Tema personalizado do zero</span>
+        </span>
+        <span class="theme-arrow">+</span>
+      </button>`;
+    }
+
+    // 2. Temas personalizados salvos
     html += customList.map(t=>{
       const isRoomTheme = isCustomRoom(state.room) && state.room.theme_name?.toLowerCase() === t.name?.toLowerCase();
       const isSelected = isRoomTheme ? (!state.selectedCategory || state.selectedCategory === ('custom:'+t.id)) : (state.selectedCategory === ('custom:'+t.id));
@@ -336,16 +346,11 @@
       </button>`;
     }).join('');
 
-    if(showCreate){
-      html += `<button class="theme-card custom create-card" data-action="custom-open-new">
-        <img class="theme-pixel-icon" src="assets/cat-custom.png" alt="">
-        <span class="theme-meta">
-          <span class="theme-name">+ Criar novo tema</span>
-          <span class="theme-qty">Tema personalizado do zero</span>
-        </span>
-        <span class="theme-arrow">+</span>
-      </button>`;
-    }
+    // 3. Categorias padrão do catálogo
+    html += all.map(c=>{
+      const n=itemsFor(c.id).length;
+      return `<button class="theme-card ${state.selectedCategory===c.id?'selected':''}" data-action="choose-theme" data-id="${c.id}" ${n<16?'disabled':''}>${topicPic(c.name)}<span class="theme-meta"><span class="theme-name">${esc(c.name)}</span><span class="theme-qty">${n} itens</span></span><span class="theme-arrow">${state.selectedCategory===c.id?'✓':'›'}</span></button>`;
+    }).join('');
 
     return html || '<p class="catalog-empty">Nenhum tema encontrado.</p>';
   }
@@ -366,9 +371,9 @@
     el.innerHTML=`<div class="room-shell">${header('',true)}<main class="lobby-scroll"><div class="lobby-wrap"><aside class="lobby-side">
       <div class="panel room-code-panel"><div class="room-code">${esc(r.code)}</div><div class="code-buttons">${iconButton('copy',svgIcon('copy'),'Copiar link')}${iconButton('share',svgIcon('share'),'Compartilhar')}${iconButton('qr-open',svgIcon('qr'),'QR Code')}</div></div>
       <div class="panel"><div class="section-inline"><h2 class="section-title">JOGADORES</h2><span class="sticker">${r.players.length}/12</span></div><div class="players-list">${roomPlayerRows()}</div></div>
-      </aside><section class="panel"><div class="theme-header"><h2 class="section-title">${host?'TEMA':'TEMA DA RODADA'}</h2>${host?'<span class="mini-tag">★ HOST</span>':''}</div>
+      </aside><section class="panel"><div class="theme-header"><div class="theme-header-left"><h2 class="section-title">${host?'TEMA':'TEMA DA RODADA'}</h2>${host?'<span class="mini-tag">★ HOST</span>':''}</div>${host?`<button class="btn btn-sm btn-yellow btn-new-theme-top" data-action="custom-open-new" title="Criar um tema personalizado do zero">✨ + CRIAR NOVO TEMA</button>`:''}</div>
       ${host?`<label class="theme-search-label"><span>⌕</span><input id="theme-search" type="search" placeholder="Pesquisar temas..." value="${esc(state.categoryQuery)}" aria-label="Pesquisar temas"></label><div class="theme-list" id="theme-list">${themeCards()}</div>
-      ${picked?`<div class="choice-controls"><span class="tiny-label">ITENS</span><div class="count-stepper"><button data-action="count-minus" aria-label="Menos itens">−</button><input id="item-count" aria-label="Quantidade de itens" type="number" min="16" max="${max}" value="${state.count}"><button data-action="count-plus" aria-label="Mais itens">+</button></div><button class="btn btn-violet btn-sm" data-action="confirm-theme">✓ ESCOLHER</button></div>`:
+      ${picked?`<div class="choice-controls"><span class="tiny-label">ITENS</span><div class="count-stepper"><button data-action="count-minus" aria-label="Menos itens">−</button><input id="item-count" aria-label="Quantidade de itens" type="number" min="16" max="${max}" value="${state.count}"><button data-action="count-plus" aria-label="Mais itens">+</button></div><button class="btn btn-violet btn-sm" data-action="confirm-theme">✓ ESCOLHER</button><button class="btn btn-yellow btn-sm" data-action="custom-open-new" style="margin-left:auto">✨ + CRIAR PERSONALIZADO</button></div>`:
         (pickedCustom?`<div class="choice-controls custom-choice-controls">
           <div class="custom-choice-title">
             <span class="tiny-label">TEMA PERSONALIZADO</span>
@@ -376,6 +381,7 @@
           </div>
           <div class="custom-choice-actions">
             <button class="btn btn-yellow btn-sm" data-action="custom-open-edit" data-id="${esc(pickedCustom.id)}">✎ EDITAR</button>
+            <button class="btn btn-cyan btn-sm" data-action="custom-open-new">✨ + NOVO TEMA</button>
             ${pickedCustom.fromRoom?'':`<button class="btn btn-ghost btn-sm" data-action="custom-delete-confirm-open" data-id="${esc(pickedCustom.id)}" title="Excluir este tema dos salvos">🗑️</button>`}
             ${isCustomRoom(r)&&r.theme_name?.toLowerCase()===pickedCustom.name?.toLowerCase()?
               `<button class="btn btn-primary btn-sm" disabled style="opacity:.9">✓ EM USO</button>`:
@@ -442,8 +448,34 @@
     el.innerHTML=`<div class="game-screen game-v11">${header(r.theme_name,true)}${gameNav()}${hero}${me()?.eliminated&&showHome?'<div class="eliminated-notice" role="status">✕ VOCÊ FOI ELIMINADO • ACOMPANHE A PARTIDA</div>':''}${!showHome&&!showMine?'':showMine?`<div class="mine-turn-mini">${me()?.eliminated?'✕ VOCÊ FOI ELIMINADO':ranked?`VOCÊ: ${rankLabel(me().rank)} LUGAR`:`${current?.id===r.me?'SUA VEZ':'VEZ DE '+esc(current?.name||'...')}`}</div>`:''}${boardArea}${actions}</div>`;
     updateClock();
   }
-  function renderFinished(){const r=state.room;const ranks=[...r.players].sort((a,b)=>(a.rank??99)-(b.rank??99)||a.seat-b.seat);const ready=r.players.filter(p=>p.ready).length;
-    el.innerHTML=`<div class="room-shell end-cover">${header('',true)}<main class="end-screen"><div class="finish-illustration"><img src="assets/cat-sports.png" class="pixel-cup pixel-trophy" alt="" aria-hidden="true"><h1 class="end-banner">RESULTADO FINAL</h1></div><div class="end-names">${ranks.map((p,i)=>`<div class="result-row ${p.rank===1?'winner':''} ${p.eliminated?'result-eliminated':''}"><strong class="rank-tile">${p.rank?rankLabel(p.rank):p.eliminated?'✕':'—'}</strong><span class="result-avatar">${playerAvatar(p,i)}</span><span class="result-person">${esc(p.name)}${p.is_me?' · você':''}${p.eliminated?'<span class="result-elim-label">ELIMINADO • PERDEU</span>':''}</span><small>${esc(p.identity?.name||'?')}</small></div>`).join('')}</div><div class="end-actions"><button class="btn btn-primary" data-action="ready-again" ${me()?.ready?'disabled':''}>${me()?.ready?'✓ Pronto':'↻ Jogar de novo'} <span class="ready-count">${ready}/${r.players.length}</span></button>${isHost()?`<button class="btn btn-cyan" data-action="new-game">✦ Novo jogo</button><button class="btn btn-ghost" data-action="close-room-open">Encerrar sala</button>`:'<button class="btn btn-ghost" data-action="leave-open">Sair</button>'}</div></main></div>`;}
+  function renderFinished(){
+    const r=state.room;
+    const ranks=[...r.players].sort((a,b)=>(a.rank??99)-(b.rank??99)||a.seat-b.seat);
+    const ready=r.players.filter(p=>p.ready).length;
+    el.innerHTML=`<div class="room-shell end-cover">${header('',true)}<main class="end-screen">
+      <div class="finish-illustration"><img src="assets/cat-sports.png" class="pixel-cup pixel-trophy" alt="" aria-hidden="true"><h1 class="end-banner">RESULTADO FINAL</h1></div>
+      <div class="end-names">${ranks.map((p,i)=>`<div class="result-row ${p.rank===1?'winner':''} ${p.eliminated?'result-eliminated':''}"><strong class="rank-tile">${p.rank?rankLabel(p.rank):p.eliminated?'✕':'—'}</strong><span class="result-avatar">${playerAvatar(p,i)}</span><span class="result-person">${esc(p.name)}${p.is_me?' · você':''}${p.eliminated?'<span class="result-elim-label">ELIMINADO • PERDEU</span>':''}</span><small>${esc(p.identity?.name||'?')}</small></div>`).join('')}</div>
+      <div class="end-actions ${isHost()?'host-end-actions':''}">
+        ${isHost() ? `
+          <button class="btn btn-yellow end-btn-new-custom" data-action="finished-create-theme" title="Criar um tema personalizado novo para a próxima partida">
+            ✨ CRIAR NOVO TEMA
+          </button>
+          <button class="btn btn-cyan end-btn-change-theme" data-action="new-game" title="Voltar ao lobby para escolher ou trocar de tema">
+            📚 ESCOLHER OUTRO TEMA
+          </button>
+          <button class="btn btn-primary" data-action="ready-again" ${me()?.ready?'disabled':''}>
+            ${me()?.ready?'✓ Pronto (mesmo tema)':'↻ Repetir tema (' + esc(r.theme_name||'mesmo') + ')'} <span class="ready-count">${ready}/${r.players.length}</span>
+          </button>
+          <button class="btn btn-ghost" data-action="close-room-open">Encerrar sala</button>
+        ` : `
+          <button class="btn btn-primary" data-action="ready-again" ${me()?.ready?'disabled':''}>
+            ${me()?.ready?'✓ Pronto':'↻ Jogar de novo'} <span class="ready-count">${ready}/${r.players.length}</span>
+          </button>
+          <button class="btn btn-ghost" data-action="leave-open">Sair da sala</button>
+        `}
+      </div>
+    </main></div>`;
+  }
   function renderRoom(){if(!state.room){renderHome();return;}if(state.room.status==='lobby')renderLobby();else if(state.room.status==='playing')renderGame();else renderFinished();}
   function renderAdmin(){
     const categories=state.categories;
@@ -493,6 +525,12 @@
       initialCustom();
       const modalTitle = m.mode==='edit' ? '✏️ EDITAR TEMA' : '✨ CRIAR NOVO TEMA';
       html=modalMarkup(modalTitle,`
+        ${m.mode==='edit'?`
+          <div class="custom-edit-banner">
+            <span>Editando tema: <strong>${esc(state.customTitle||'Personalizado')}</strong></span>
+            <button class="btn btn-sm btn-yellow" data-action="custom-switch-to-new" type="button">✨ Quero criar um NOVO tema do zero</button>
+          </div>
+        `:''}
         <div class="notice">Personalize o tema com nomes e fotos. Imagens são reduzidas no seu aparelho e ficam salvas nas partidas.</div>
         <div class="field" style="margin-top:13px">
           <label>NOME DO SEU TEMA</label>
@@ -513,7 +551,13 @@
           <button class="btn btn-sm" data-action="custom-add-8">+ 8 ITENS</button>
           <button class="btn btn-sm btn-ghost" data-action="custom-clear-all" title="Limpar todos os itens e recomeçar do zero">🗑️ LIMPAR TUDO</button>
         </div>`,
-        `<button class="btn btn-ghost" data-action="modal-close">CANCELAR</button><button class="btn btn-primary" data-action="custom-save">✓ USAR TEMA</button>`,
+        `<button class="btn btn-ghost" data-action="modal-close">CANCELAR</button>
+         ${m.mode==='edit'?`
+           <button class="btn btn-yellow" data-action="custom-save-as-new" title="Salva estas opções como um tema novo separado">✨ SALVAR COMO NOVO</button>
+           <button class="btn btn-primary" data-action="custom-save">✓ ATUALIZAR E USAR</button>
+         `:`
+           <button class="btn btn-primary" data-action="custom-save">✓ USAR TEMA</button>
+         `}`,
         true
       );
     }
@@ -666,16 +710,30 @@
       showToast('Tema excluído dos salvos.', true);
       return;
     }
+    if(type==='custom-switch-to-new'){
+      resetCustomForm();
+      state.modal = { type: 'custom', mode: 'create' };
+      renderModal();
+      showToast('Pronto para criar um tema novo!', true);
+      return;
+    }
     if(type==='custom-clear-all'){
       state.customEditingId = null;
       state.customTitle = '';
       state.customItems = Array.from({length:16},()=>({name:'',image_url:''}));
+      if(state.modal) state.modal.mode = 'create';
       const titleInput = document.getElementById('custom-title');
       if(titleInput) titleInput.value = '';
       const bulkInput = document.getElementById('custom-bulk');
       if(bulkInput) bulkInput.value = '';
       const modalTitleEl = document.querySelector('#overlay .bubble-title');
       if(modalTitleEl) modalTitleEl.textContent = '✨ CRIAR NOVO TEMA';
+      const editBanner = document.querySelector('.custom-edit-banner');
+      if(editBanner) editBanner.remove();
+      const foot = document.querySelector('#overlay .modal-foot');
+      if(foot){
+        foot.innerHTML = `<button class="btn btn-ghost" data-action="modal-close">CANCELAR</button><button class="btn btn-primary" data-action="custom-save">✓ USAR TEMA</button>`;
+      }
       updateCustomGrid();
       showToast('Formulário limpo para um novo tema!', true);
       return;
@@ -757,6 +815,38 @@
       });
       return;
     }
+    if(type==='custom-save-as-new'){
+      state.customEditingId = null;
+      const name=(document.getElementById('custom-title')?.value||'').trim();
+      state.customTitle=name;
+      const items=state.customItems.filter(i=>i.name.trim()).map(i=>({name:i.name.trim(),image_url:i.image_url||''}));
+      if(name.length<2)return showToast('Dê um nome ao seu novo tema.');
+      if(items.length<16)return showToast(`Preencha pelo menos 16 itens com nomes (atualmente ${items.length} de 16).`);
+      const seen = new Set();
+      const duplicates = [];
+      for(const it of items){
+        const k = it.name.toLocaleLowerCase('pt-BR');
+        if(seen.has(k)) duplicates.push(it.name);
+        seen.add(k);
+      }
+      if(duplicates.length)return showToast(`Remova nomes repetidos: ${duplicates.slice(0,3).join(', ')}`);
+      await safeCall(async()=>{
+        await act('set_custom',{name,items});
+        saveCustomThemeToStorage({
+          id: `custom-${Date.now()}`,
+          name,
+          items
+        });
+        state.customEditingId=null;
+        state.selectedCategory='';
+        state.count=items.length;
+        state.modal=null;
+        document.getElementById('overlay')?.remove();
+        render();
+        showToast(`Novo tema "${name}" salvo e pronto para jogar!`,true);
+      });
+      return;
+    }
     if(type==='mark'){
       if(!canEditVisibleBoard())return showToast('Tabuleiro bloqueado nesta vez.');
       if(!state.room?.items.some(item=>item.id===id))return;
@@ -793,6 +883,16 @@
     if(type==='kick-open'){state.modal={type:'kick',playerId:id};return renderModal();}
     if(type==='kick-confirm'){await doAction('kick',{player_id:id});state.modal=null;render();return;}
     if(type==='new-game'){if(!isHost())return;await doAction('new_game');return;}
+    if(type==='finished-create-theme'){
+      if(!isHost())return;
+      await safeCall(async()=>{
+        await act('new_game');
+        resetCustomForm();
+        state.modal = { type: 'custom', mode: 'create' };
+        render();
+      });
+      return;
+    }
     if(type==='close-room-open'){if(!isHost())return;state.modal={type:'close-room'};return renderModal();}
     if(type==='close-room'){
       if(state.busy)return;

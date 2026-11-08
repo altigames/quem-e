@@ -496,10 +496,24 @@ button:focus-visible,input:focus-visible{outline:2px solid #6bfaff;outline-offse
 @media(max-width:350px){.players-tab-eliminated{font-size:8px;max-width:78px;padding:3px}.eliminated-notice{font-size:9px}}
 
 /* Custom themes improvements: creation, list and editor */
-.theme-card.create-card{background:#0e1e47!important;border:1px dashed #6f58db!important}
-.theme-card.create-card:hover{background:#152b61!important}
-.theme-card.create-card .theme-name{color:#ffd966}
+.theme-header{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.theme-header-left{display:flex;align-items:center;gap:8px}
+.btn-new-theme-top{font:700 13px var(--pixel);padding:5px 11px;letter-spacing:.02em;box-shadow:0 3px 0 #9f8216}
+.theme-card.create-card{background:linear-gradient(90deg,#181c5a,#1c134d)!important;border:2px dashed #ffcc37!important;margin-bottom:4px}
+.theme-card.create-card:hover{background:#28246f!important}
+.theme-card.create-card .theme-name{color:#ffe866!important;font-size:17px!important}
 .theme-card.create-card .theme-arrow{font-size:22px;font-weight:900;color:#ffe600}
+.custom-edit-banner{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#1e1a52;border:2px solid #ffcc37;padding:8px 12px;margin-bottom:12px;font:700 13px var(--pixel);color:#fff;flex-wrap:wrap}
+.custom-edit-banner strong{color:#ffcc37}
+.end-actions.host-end-actions{display:flex;flex-direction:column;gap:8px;width:100%}
+.end-actions .btn.end-btn-new-custom{background:#ffd63f;color:#0b0e2d;border-color:#fff}
+.end-actions .btn.end-btn-new-custom:hover{background:#ffe37a}
+.end-actions .btn.end-btn-change-theme{background:#5ff5ff;color:#09142b;border-color:#b4ffff}
+.end-actions .btn.end-btn-change-theme:hover{background:#8effff}
+@media(min-width:600px){
+  .end-actions.host-end-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .end-actions.host-end-actions .btn:last-child{grid-column:span 2}
+}
 .custom-choice-controls{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:10px 0;padding:12px 0 5px;border-top:1px solid #48459d}
 .custom-choice-title{display:flex;flex-direction:column;gap:2px}
 .custom-choice-title strong{font:700 15px var(--pixel);color:#fff}
@@ -515,4 +529,5 @@ button:focus-visible,input:focus-visible{outline:2px solid #6bfaff;outline-offse
 .del-item{cursor:pointer;display:grid;place-items:center;transition:background .14s,transform .1s}
 .del-item:hover{background:#ff4b86;color:#fff}
 .del-item:active{transform:scale(.92)}
+
 
