@@ -1,4 +1,4 @@
-/* QUEM É?! v11.5 — UX aprimorada para criação e troca de temas pós-jogo */
+/* QUEM É?! v11.6 — Tema especial Super-Heróis & Vilões com 44 personagens */
 (() => {
   'use strict';
   const cfg = window.QE_CONFIG || {};
@@ -82,6 +82,25 @@
   const categoryFor = id => state.categories.find(c=>c.id===id);
   const itemsFor = id => state.items.filter(i=>i.category_id===id);
   const CUSTOM_STORAGE_KEY = 'qe-custom-themes-v2';
+
+  const PRESET_THEMES = [
+    {
+      id: 'super-heroes',
+      name: 'Super-Heróis & Vilões',
+      isPreset: true,
+      items: [
+        'Homem-Aranha', 'Batman', 'Coringa', 'Homem de Ferro', 'Thanos',
+        'Wolverine', 'Deadpool', 'Mulher-Maravilha', 'Superman', 'Thor',
+        'Hulk', 'Capitão América', 'Doutor Estranho', 'Arlequina', 'Pantera Negra',
+        'Loki', 'Flash', 'Venom', 'Magneto', 'Aquaman',
+        'Viúva Negra', 'Duende Verde', 'Feiticeira Escarlate', 'Charada', 'Gavião Arqueiro',
+        'Pinguim', 'Visão', 'Doutor Destino', 'Tempestade', 'Robin',
+        'Bane', 'Soldado Invernal', 'Lanterna Verde', 'Homem-Formiga', 'Ultron',
+        'Groot', 'Mulher-Gato', 'Senhor das Estrelas', 'Demolidor', 'Lex Luthor',
+        'Capitã Marvel', 'Espantalho', 'Noturno', 'Galactus'
+      ].map(name => ({ name, image_url: '' }))
+    }
+  ];
   function getSavedCustomThemes(){
     try{
       const raw = localStorage.getItem(CUSTOM_STORAGE_KEY);
@@ -122,6 +141,12 @@
   }
   function getAllCustomThemes(){
     const saved = getSavedCustomThemes();
+    for(const preset of PRESET_THEMES){
+      const exists = saved.find(t => t.id === preset.id || t.name.toLowerCase() === preset.name.toLowerCase());
+      if(!exists){
+        saved.push({ ...preset, items: [...preset.items] });
+      }
+    }
     const r = state.room;
     if(isCustomRoom(r) && r.theme_name){
       const already = saved.find(t => t.name.trim().toLowerCase() === r.theme_name.trim().toLowerCase());
@@ -332,15 +357,16 @@
       </button>`;
     }
 
-    // 2. Temas personalizados salvos
+    // 2. Temas personalizados salvos e especiais
     html += customList.map(t=>{
       const isRoomTheme = isCustomRoom(state.room) && state.room.theme_name?.toLowerCase() === t.name?.toLowerCase();
       const isSelected = isRoomTheme ? (!state.selectedCategory || state.selectedCategory === ('custom:'+t.id)) : (state.selectedCategory === ('custom:'+t.id));
-      return `<button class="theme-card custom ${isSelected?'selected':''}" data-action="choose-custom" data-id="${esc(t.id)}">
-        <img class="theme-pixel-icon" src="assets/cat-custom.png" alt="">
+      const isPreset = !!t.isPreset;
+      return `<button class="theme-card custom ${isPreset?'preset-card':''} ${isSelected?'selected':''}" data-action="choose-custom" data-id="${esc(t.id)}">
+        <img class="theme-pixel-icon" src="${isPreset?'assets/cat-star.png':'assets/cat-custom.png'}" alt="">
         <span class="theme-meta">
           <span class="theme-name">${esc(t.name)}</span>
-          <span class="theme-qty">${t.items.length} itens • Personalizado</span>
+          <span class="theme-qty">${t.items.length} itens • ${isPreset?'Tema Especial 🦸':'Personalizado'}</span>
         </span>
         <span class="theme-arrow">${isSelected?'✓':'›'}</span>
       </button>`;
@@ -376,13 +402,20 @@
       ${picked?`<div class="choice-controls"><span class="tiny-label">ITENS</span><div class="count-stepper"><button data-action="count-minus" aria-label="Menos itens">−</button><input id="item-count" aria-label="Quantidade de itens" type="number" min="16" max="${max}" value="${state.count}"><button data-action="count-plus" aria-label="Mais itens">+</button></div><button class="btn btn-violet btn-sm" data-action="confirm-theme">✓ ESCOLHER</button><button class="btn btn-yellow btn-sm" data-action="custom-open-new" style="margin-left:auto">✨ + CRIAR PERSONALIZADO</button></div>`:
         (pickedCustom?`<div class="choice-controls custom-choice-controls">
           <div class="custom-choice-title">
-            <span class="tiny-label">TEMA PERSONALIZADO</span>
-            <strong>${esc(pickedCustom.name)}</strong> <small>• ${pickedCustom.items.length} itens</small>
+            <span class="tiny-label">${pickedCustom.isPreset?'TEMA ESPECIAL':'TEMA PERSONALIZADO'}</span>
+            <strong>${esc(pickedCustom.name)}</strong> <small>• ${pickedCustom.items.length} itens no total</small>
           </div>
+          ${pickedCustom.items.length > 16 ? `
+            <div class="count-stepper" title="Quantidade de itens sorteados na partida">
+              <button data-action="count-minus" aria-label="Menos itens">−</button>
+              <input id="item-count" aria-label="Quantidade de itens" type="number" min="16" max="${pickedCustom.items.length}" value="${state.count}">
+              <button data-action="count-plus" aria-label="Mais itens">+</button>
+            </div>
+          ` : ''}
           <div class="custom-choice-actions">
-            <button class="btn btn-yellow btn-sm" data-action="custom-open-edit" data-id="${esc(pickedCustom.id)}">✎ EDITAR</button>
+            <button class="btn btn-yellow btn-sm" data-action="custom-open-edit" data-id="${esc(pickedCustom.id)}">${pickedCustom.isPreset?'✎ VER / EDITAR':'✎ EDITAR'}</button>
             <button class="btn btn-cyan btn-sm" data-action="custom-open-new">✨ + NOVO TEMA</button>
-            ${pickedCustom.fromRoom?'':`<button class="btn btn-ghost btn-sm" data-action="custom-delete-confirm-open" data-id="${esc(pickedCustom.id)}" title="Excluir este tema dos salvos">🗑️</button>`}
+            ${pickedCustom.fromRoom || pickedCustom.isPreset ? '' : `<button class="btn btn-ghost btn-sm" data-action="custom-delete-confirm-open" data-id="${esc(pickedCustom.id)}" title="Excluir este tema dos salvos">🗑️</button>`}
             ${isCustomRoom(r)&&r.theme_name?.toLowerCase()===pickedCustom.name?.toLowerCase()?
               `<button class="btn btn-primary btn-sm" disabled style="opacity:.9">✓ EM USO</button>`:
               `<button class="btn btn-violet btn-sm" data-action="confirm-custom" data-id="${esc(pickedCustom.id)}">✓ ESCOLHER</button>`
@@ -640,7 +673,14 @@
     if(type==='qr-open'){state.modal={type:'qr'};return renderModal();}
     if(type==='choose-theme'){state.selectedCategory=id;state.count=Math.min(24,itemsFor(id).length);render();return;}
     if(type==='count-minus'){state.count=Math.max(16,state.count-1);render();return;}
-    if(type==='count-plus'){state.count=Math.min(itemsFor(state.selectedCategory).length,state.count+1);render();return;}
+    if(type==='count-plus'){
+      const picked=categoryFor(state.selectedCategory);
+      const pickedCustom=getPickedCustomTheme();
+      const max=picked?itemsFor(picked.id).length:(pickedCustom?pickedCustom.items.length:24);
+      state.count=Math.min(max,state.count+1);
+      render();
+      return;
+    }
     if(type==='confirm-theme')return await doAction('set_theme',{theme_id:state.selectedCategory,count:state.count});
     if(type==='set-time'){const seconds=button.dataset.seconds==='infinite'?null:Number(button.dataset.seconds);return await doAction('set_time',{seconds});}
     if(type==='start')return await doAction('start');
@@ -648,16 +688,28 @@
     if(type==='set-repeats')return await doAction('set_repeats',{enabled:!state.room.allow_duplicate_identities});
     if(type==='set-one-guess')return await doAction('set_one_guess',{enabled:!state.room.one_guess_only});
     if(type.startsWith('tab-')){if(state.room?.status!=='playing')return;state.activeTab=type==='tab-players'?'players':type==='tab-mine'?'mine':'home';state.guessMode=false;state.guessId=null;renderGame();return;}
-    if(type==='choose-custom'){state.selectedCategory='custom:'+id;render();return;}
+    if(type==='choose-custom'){
+      state.selectedCategory='custom:'+id;
+      const t=getAllCustomThemes().find(x=>x.id===id||x.name===id);
+      const total=t?.items?.length||20;
+      state.count=Math.max(16,Math.min(24,total));
+      render();
+      return;
+    }
     if(type==='confirm-custom'){
       const theme=getAllCustomThemes().find(t=>t.id===id||t.name===id);
       if(!theme)return showToast('Tema não encontrado.');
       await safeCall(async()=>{
-        await act('set_custom',{name:theme.name,items:theme.items});
+        let itemsToUse = theme.items;
+        if(state.count && state.count >= 16 && state.count < theme.items.length){
+          const shuffled = [...theme.items].sort(() => Math.random() - 0.5);
+          itemsToUse = shuffled.slice(0, state.count);
+        }
+        await act('set_custom',{name:theme.name,items:itemsToUse});
         state.selectedCategory='';
-        state.count=theme.items.length;
+        state.count=itemsToUse.length;
         render();
-        showToast(`Tema "${theme.name}" escolhido para a partida!`,true);
+        showToast(`Tema "${theme.name}" escolhido (${itemsToUse.length} itens)!`,true);
       });
       return;
     }
@@ -923,7 +975,12 @@
     const t=event.target;if(t.id==='player-name')state.name=t.value;
     if(t.id==='theme-search'){state.categoryQuery=t.value;const list=document.getElementById('theme-list');if(list)list.innerHTML=themeCards();}
     if(t.id==='join-code')state.entryCode=t.value.toUpperCase();
-    if(t.id==='item-count'){const max=itemsFor(state.selectedCategory).length;state.count=Math.max(16,Math.min(max,Number(t.value)||16));}
+    if(t.id==='item-count'){
+      const picked=categoryFor(state.selectedCategory);
+      const pickedCustom=getPickedCustomTheme();
+      const max=picked?itemsFor(picked.id).length:(pickedCustom?pickedCustom.items.length:24);
+      state.count=Math.max(16,Math.min(max,Number(t.value)||16));
+    }
     if(t.id==='custom-title')state.customTitle=t.value;
     if(t.classList.contains('custom-name')){
       const idx=Number(t.dataset.idx);

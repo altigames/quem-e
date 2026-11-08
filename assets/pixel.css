@@ -529,5 +529,8 @@ button:focus-visible,input:focus-visible{outline:2px solid #6bfaff;outline-offse
 .del-item{cursor:pointer;display:grid;place-items:center;transition:background .14s,transform .1s}
 .del-item:hover{background:#ff4b86;color:#fff}
 .del-item:active{transform:scale(.92)}
+.theme-card.preset-card{background:linear-gradient(90deg,#1b1448,#142055)!important;border-left:4px solid #ff4f9b!important}
+.theme-card.preset-card .theme-name{color:#6ffaff!important}
+
 
 
